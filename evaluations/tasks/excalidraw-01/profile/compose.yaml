@@ -1,0 +1,16 @@
+name: excalidraw
+
+x-dtu:
+  description: Excalidraw web app, opened from the host's browser
+  urls:
+    - {port: 8080, label: Excalidraw}
+
+services:
+  twin:
+    image: excalidraw-app:0.18.1
+    command: [nginx, -g, daemon off;]
+    ports:
+      - "${DTU_EXCALIDRAW_PORT:-8420}:8080"
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/"]
+      interval: 2s

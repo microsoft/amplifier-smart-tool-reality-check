@@ -1,0 +1,29 @@
+# The evaluation environment: a developer's machine with this checkout installable as if released, and a Docker
+# daemon of its own, so every universe launched in it lives inside it.
+#
+#   GH_TOKEN=$(gh auth token) digital-twin-universe launch --profile evaluations/environment
+#   digital-twin-universe exec --id <id> --command 'uv tool install "reality-check[copilot] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"'
+name: reality-check-evaluation
+
+x-dtu:
+  description: A developer's Linux machine with a nested Docker daemon, where reality-check is installed and evaluated
+  twin_machine: twin
+  repositories:
+    - path: ../..
+      url: https://github.com/microsoft/amplifier-smart-tool-reality-check
+
+services:
+  twin:
+    build: .
+    # A nested daemon has no unprivileged path. This weakens the container boundary, and is this profile's
+    # decision to make: the twin runs only what an evaluation runs.
+    privileged: true
+    command: [sudo, dind, dockerd, --host=unix:///var/run/docker.sock]
+    # Chromium crashes with Docker's default 64 MB of shared memory.
+    shm_size: 2gb
+    environment:
+      GH_TOKEN: ${GH_TOKEN:-}
+    healthcheck:
+      test: [CMD, docker, info]
+      interval: 3s
+      start_period: 60s
