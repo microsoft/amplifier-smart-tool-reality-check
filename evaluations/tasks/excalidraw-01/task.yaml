@@ -1,0 +1,30 @@
+capability: check-software
+description: >-
+  Excalidraw v0.18.1, the open-source whiteboard, built from source with one bug added: once a shape that an
+  arrow is connected to is dragged, the arrow's end jumps about 20px inside the shape. When the arrow is first
+  drawn, its end is placed correctly. The image is built outside the evaluation environment, so the agent sees
+  only a Digital Twin Universe profile that runs it, as a user with their own custom build would. The agent must
+  launch it, find a way to use it in a browser, and notice where the arrow ends sit after a shape moves.
+request: >-
+  I have a custom version of excalidraw available in a DTU in .agents/digital-twin-universe/excalidraw.
+  Can you please check that drawing shapes, moving them, and connecting them all work as expected?
+target: .agents/digital-twin-universe/excalidraw
+files:
+  profile: .agents/digital-twin-universe/excalidraw
+images:
+  - build: image
+    tag: excalidraw-app:0.18.1
+timeout_seconds: 3600
+rubric:
+  found-the-defect:
+    weight: 4
+    description: Reports that the end of an arrow bound to a shape moves inside the shape after a bound shape is dragged.
+  drawn-vs-dragged:
+    weight: 2
+    description: Says that the arrow end is placed correctly when the arrow is drawn and wrongly only after a drag.
+  evidence:
+    weight: 3
+    description: Each finding cites screenshots or recordings that actually show it.
+  no-false-findings:
+    weight: 1
+    description: Reports no defects that the evidence does not support.
