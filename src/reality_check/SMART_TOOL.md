@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.2.0
+version: 0.3.0
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding
 use_cases:
@@ -30,7 +30,7 @@ requires:
       instance OPENAI_API_KEY for its default model. Without them, the model-backed
       capabilities cannot run through amplifier-agent.
     optional: true
-    install: https://github.com/microsoft/amplifier-agent/blob/v0.22.0/docs/providers.md
+    install: https://github.com/microsoft/amplifier-agent/blob/v0.23.1/docs/providers.md
   - name: codex-sign-in
     purpose: >-
       The Codex CLI signed in with ChatGPT or an API key, for the codex agent provider.
@@ -91,17 +91,19 @@ provider, the first installed of `copilot`, `amplifier-agent`, `codex`, and `cla
 - `amplifier-agent`: [Amplifier Agent](https://github.com/microsoft/amplifier-agent), calling
   the model provider named in the model `<provider>/<model>` with that provider's credentials,
   for instance `OPENAI_API_KEY` for the default `openai/...` models. See its
-  [providers](https://github.com/microsoft/amplifier-agent/blob/v0.22.0/docs/providers.md).
+  [providers](https://github.com/microsoft/amplifier-agent/blob/v0.23.1/docs/providers.md).
 - `codex`: [OpenAI Codex](https://github.com/openai/codex), with the user's Codex configuration.
   The Codex CLI must be signed in with ChatGPT or an API key, see
   [authentication](https://developers.openai.com/codex/auth).
-- `claude`: the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python), with the
-  user's Claude Code settings. Needs `ANTHROPIC_API_KEY`, or Amazon Bedrock, Claude Platform on AWS,
-  Google Cloud's Agent Platform, or Microsoft Foundry credentials, see
+- `claude`: the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python). Needs
+  `ANTHROPIC_API_KEY`, or Amazon Bedrock, Claude Platform on AWS, Google Cloud's Agent Platform, or
+  Microsoft Foundry credentials in the environment, see
   [authentication](https://code.claude.com/docs/en/agent-sdk/quickstart).
 
 Without one, a model-backed capability fails immediately and names what to configure; it
 never falls back to a deterministic answer.
+
+Every agent provider runs with its telemetry turned off.
 
 Runs on Linux, macOS, and Windows.
 

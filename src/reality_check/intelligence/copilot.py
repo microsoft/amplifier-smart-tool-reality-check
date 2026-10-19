@@ -34,6 +34,7 @@ from copilot.session_events import (
     ToolExecutionStartData,
 )
 
+from reality_check.intelligence.events import EventLog, shorten
 from reality_check.intelligence.schemas import (
     AgentEvent,
     AgentEventKind,
@@ -50,7 +51,6 @@ from reality_check.intelligence.submission import (
 )
 from reality_check.schemas import ALL_EFFORTS, RealityCheckError
 
-SHORTENED_LENGTH = 500
 # How long an aborted turn may take to go idle before the run stops waiting for it.
 DRAIN_SECONDS = 30
 
@@ -61,9 +61,7 @@ class CopilotRun:
     def __init__(self, client: CopilotClient, request: AgentRequest) -> None:
         self._client = client
         self._request = request
-        self._events: list[AgentEvent] = []
-        # Replaced on every append, so a reader waits on the one current when it ran out of events.
-        self._appended = asyncio.Event()
+        self._log = EventLog()
         self._idle = asyncio.Event()
         self._running: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._session: CopilotSession | None = None
@@ -84,17 +82,8 @@ class CopilotRun:
         """Return once the first prompt is sent, or once the run ended trying."""
         await self._running
 
-    async def events(self) -> AsyncIterator[AgentEvent]:
-        index = 0
-        while True:
-            appended = self._appended
-            while index < len(self._events):
-                event = self._events[index]
-                index += 1
-                yield event
-                if event.kind == "terminal":
-                    return
-            await appended.wait()
+    def events(self) -> AsyncIterator[AgentEvent]:
+        return self._log.replay()
 
     async def steer(self, message: str) -> None:
         if self._session is None or self._task.done():
@@ -217,6 +206,7 @@ class CopilotRun:
             "model": request.model,
             "on_permission_request": PermissionHandler.approve_all,
             "skip_custom_instructions": True,
+            "enable_session_telemetry": False,
             "on_event": self._on_event,
         }
         if request.reasoning_effort is not None:
@@ -318,9 +308,7 @@ class CopilotRun:
         event = AgentEvent(kind=kind, text=text, data=data)
         if source is not None:
             event.time = source.timestamp.astimezone(UTC)
-        self._events.append(event)
-        self._appended.set()
-        self._appended = asyncio.Event()
+        self._log.emit(event)
 
 
 class CopilotIntelligence:
@@ -418,8 +406,3 @@ def mcp_server_config(server: McpServer) -> MCPServerConfig:
     if server.cwd is not None:
         config["working_directory"] = str(server.cwd)
     return config
-
-
-def shorten(text: str, limit: int = SHORTENED_LENGTH) -> str:
-    """The text cut to `limit` characters, marked when cut, so an event stays readable."""
-    return text if len(text) <= limit else f"{text[:limit]}... [{len(text) - limit} more characters]"

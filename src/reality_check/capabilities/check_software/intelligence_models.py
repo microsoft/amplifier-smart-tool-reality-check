@@ -40,13 +40,8 @@ def default_effort(agent_provider: AgentProvider, model: str) -> ReasoningEffort
 def require_allowed(
     agent_provider: AgentProvider, model: str, reasoning_effort: str | None, images: list[Path]
 ) -> ReasoningEffort | None:
-    """The reasoning effort to send, after raising unless the model is one Reality Check runs on and takes it as asked.
-
-    An agent provider with no models listed runs none, and its implementation says why.
-    """
+    """The reasoning effort to send, after raising unless the model is one Reality Check runs on and takes it as asked."""
     allowed = [entry for entry in INTELLIGENCE_MODELS if entry.agent_provider == agent_provider]
-    if not allowed:
-        return DEFAULT_INTELLIGENCE_REASONING_EFFORT if reasoning_effort is None else _effort(reasoning_effort)
     listed = next((entry for entry in allowed if entry.id == model), None)
     if listed is None:
         raise RealityCheckError(

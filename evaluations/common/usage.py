@@ -12,6 +12,7 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
 
     For Copilot, `aiu` is `copilot_usage.totalNanoAiu` summed over calls, in AIU, which matches the session's own
     total. Each call's `cost` is the model's premium request multiplier, not a count, so it is kept per model.
+    Agent providers that price in money report `cost` by currency, summed as `usd`.
     """
     by_model: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     for event in events:
@@ -23,8 +24,11 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
         for field in TOKEN_FIELDS:
             totals[field] += data.get(field) or 0
         totals["aiu"] += ((data.get("copilot_usage") or {}).get("totalNanoAiu") or 0) / NANO
-        if data.get("cost") is not None:
-            totals["multiplier"] = data["cost"]
+        cost = data.get("cost")
+        if isinstance(cost, dict):
+            totals["usd"] += cost.get("USD") or 0
+        elif cost is not None:
+            totals["multiplier"] = cost
     total: dict[str, float] = defaultdict(float)
     for totals in by_model.values():
         for field, value in totals.items():

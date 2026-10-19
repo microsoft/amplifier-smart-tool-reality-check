@@ -59,9 +59,7 @@ def standard(env: Environment, context: RunContext, result: CapabilityResult, ba
             else:
                 shutil.move(child, destination)
     packages = context.directory / "packages"
-    collect_in_environment.installed_diff(
-        packages / "before", packages / "after", context.directory / "installed.diff"
-    )
+    collect_in_environment.installed_diff(packages / "before", packages / "after", context.directory / "installed.diff")
     env.container_logs(context.directory / "logs" / "dockerd.log")
     report = context.directory / "check" / "report.md"
     if report.is_file():

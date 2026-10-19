@@ -14,7 +14,7 @@ uv run evaluations/run.py cleanup   # destroys every evaluation environment, inc
 
 No `--task` runs every task. Tasks always run at the same time as each other. The runs of one task, its models x repeats, run one at a time; `--parallel` sets how many run at the same time.
 
-Needs Docker on the host and the credentials of each agent provider used: for copilot, `GH_TOKEN` or `gh auth login`.
+Needs Docker on the host and the credentials of each agent provider used: for copilot, `GH_TOKEN` or `gh auth login`; for amplifier-agent and codex, `OPENAI_API_KEY`; for claude, `ANTHROPIC_API_KEY`.
 
 ## Layout
 
@@ -68,7 +68,7 @@ report.md         the capability's report
 grade.json        the judge's score, reason, and files for each criterion
 events.jsonl      the capability's events
 check/            the capability's own record, evidence included
-session/          the agent provider's native session
+session/          the agent provider's native session, when it is kept outside check/session/
 changes.json      every file made or changed in the environment; changes/ holds copies of the small ones
 installed.diff    packages installed, from packages/before and packages/after
 logs/             setup and step logs, the provider's logs, nested containers, DTU state, the nested daemon

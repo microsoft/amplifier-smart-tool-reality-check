@@ -11,7 +11,7 @@ Install:
 - [prek](https://github.com/j178/prek): Used for precommit hooks. Recommended to install through PyPI/uv with `uv tool install prek`. Use `uv tool upgrade prek` to update it.
 - [GitHub CLI](https://cli.github.com/) for intelligence features with GitHub Copilot.
 - [GitHub Copilot subscription](https://github.com/github/copilot-cli#prerequisites) for intelligent features through the `copilot` agent provider.
-- [Model provider credentials](https://github.com/microsoft/amplifier-agent/blob/v0.22.0/docs/providers.md), such as `OPENAI_API_KEY`, for intelligent features through the `amplifier-agent` agent provider.
+- [Model provider credentials](https://github.com/microsoft/amplifier-agent/blob/v0.23.1/docs/providers.md), such as `OPENAI_API_KEY`, for intelligent features through the `amplifier-agent` agent provider.
 - [Codex CLI](https://github.com/openai/codex) [signed in](https://developers.openai.com/codex/auth) with ChatGPT or an API key, for intelligent features through the `codex` agent provider.
 - [`ANTHROPIC_API_KEY` or a cloud provider's credentials](https://code.claude.com/docs/en/agent-sdk/quickstart), for intelligent features through the `claude` agent provider.
 - [Docker](https://docs.docker.com/get-started/get-docker/), for [evaluations](../evaluations/README.md).
