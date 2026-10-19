@@ -1,9 +1,9 @@
 """Runs inside the evaluation environment after the capability, as root, with the system Python's standard library.
 
-`collect.py CONFIG` gathers, into one directory, everything that shows what the agent did: its record, its session
-and logs, every file it made or changed since the baseline, what is installed now, and the containers on the nested
-Docker daemon. The host imports PACKAGE_LISTS and `installed_diff` from here, so the baseline needs no file in the
-environment.
+`collect_in_environment.py CONFIG` gathers, into one directory, everything that shows what the agent did: its
+record, its session and logs, every file it made or changed since the baseline, what is installed now, and the
+containers on the nested Docker daemon. `collect.py` on the host imports PACKAGE_LISTS and `installed_diff` from
+here, so the baseline needs no file in the environment.
 """
 
 import difflib
@@ -17,7 +17,7 @@ import sys
 WORK = Path("/var/lib/evaluation")
 USER = "user"
 HOME = Path("/home/user")
-# Never part of what the agent did: kernel and runtime views, the nested daemon's data, and the harness's own files.
+# Never part of what the agent did: kernel and runtime views, the nested daemon's data, and the evaluation's own files.
 SKIPPED = {Path("/proc"), Path("/sys"), Path("/dev"), Path("/run"), Path("/var/lib/docker"), WORK}
 # Mount points other than the root that hold files a person or agent writes.
 WALKED_MOUNTS = {Path("/tmp")}

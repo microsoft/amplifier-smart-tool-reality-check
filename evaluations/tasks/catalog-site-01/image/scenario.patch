@@ -1,0 +1,65 @@
+diff --git a/site/theme/build.py b/site/theme/build.py
+index b6053f1..35bcdcd 100644
+--- a/site/theme/build.py
++++ b/site/theme/build.py
+@@ -68,6 +68,17 @@ def code_box(text, title, identity):
+     return f'''<div class="copy-region"><div class="code-box"><div class="code-head"><span>{esc(title)}</span><button class="copy" data-copy="{identity}" aria-label="Copy {esc(title)}">Copy</button></div><pre id="{identity}">{esc(text)}</pre></div><p class="status-message" role="status" aria-live="polite"></p></div>'''
+ 
+ 
++def install_command(repository, path):
++    """The `uv tool install` command for a tool, from a subdirectory when its repository holds several tools."""
++    if path == '.':
++        return f'uv tool install git+{repository}'
++    return f'uv tool install "git+{repository}#subdirectory={path}"'
++
++
++def install_box(command, package, name):
++    return f'''<div class="copy-region"><div class="code-box"><div class="code-head"><span>Install</span><button class="copy" data-copy="{esc(package)}" aria-label="Copy the install command for {esc(name)}">Copy</button></div><pre data-package="{esc(package)}">{esc(command)}</pre></div><p class="status-message" role="status" aria-live="polite"></p></div>'''
++
++
+ def related(keys, args):
+     return '<div class="related">' + ''.join(f'<a href="{page_url(k, args)}">{PAGES[k]["name"]}<span>Explore the tool</span></a>' for k in keys) + '</div>'
+ 
+@@ -189,6 +200,7 @@ def catalog(config, args, root):
+             raise ValueError(f'{slug}: invalid use cases')
+         detail = ''
+         manifest_link = ''
++        install = ''
+         if prov:
+             commit = prov['source']['commit']
+             if not re.fullmatch(r'[a-f0-9]{40,64}', commit):
+@@ -196,6 +208,9 @@ def catalog(config, args, root):
+             source_repo = safe_url(prov['source']['repository']).removesuffix('.git')
+             path = quote(prov['original_manifest_path'],safe='/')
+             manifest_link = link(f'{source_repo}/blob/{commit}/{path}', 'Read manifest')
++            source_path = prov['source']['path']
++            package = source_path.split('/')[0] if source_path != '.' else source_repo.rsplit('/', 1)[1]
++            install = install_box(install_command(source_repo, source_path), package, display_name)
+             detail = f'<details><summary>Full description and source</summary><p>{esc(description)}</p><p>Manifest name: {esc(name)}</p><ul>{"".join("<li>"+esc(u)+"</li>" for u in use_cases)}</ul><p>Snapshot refreshed: {esc(prov["last_success"])}</p><p>Source commit: <code>{esc(commit)}</code></p><p>Ref: {esc(prov["source"]["ref"])} / Path: {esc(prov["source"]["path"])}</p></details>'
+         showcase = next((key for key,p in PAGES.items() if repo == repo_url(key) and key not in ('overview','catalog')),None)
+         launch = link(page_url(showcase,args),'Explore tool') if showcase else ''
+@@ -216,7 +231,7 @@ def catalog(config, args, root):
+             f'data-platforms="{esc(" ".join(tool_platforms))}" '
+             f'data-search="{search}"{category_attr}><h2>{esc(display_name)}</h2>')
+         card_end = (
+-            f'<p>{esc(excerpt)}</p><div class="tool-meta">{tags}</div>{detail}'
++            f'<p>{esc(excerpt)}</p><div class="tool-meta">{tags}</div>{install}{detail}'
+             f'<div class="card-links">{launch}{link(repo,"Repository")}'
+             f'{manifest_link}</div></article>')
+         card = f'{card_start}{classification}{card_end}'
+diff --git a/site/theme/site.js b/site/theme/site.js
+index 9554624..aea41bf 100644
+--- a/site/theme/site.js
++++ b/site/theme/site.js
+@@ -1,7 +1,10 @@
+ /* Progressive enhancement only. All content and links work without JavaScript. */
++// Recommended tools are listed twice, so install commands are found by package rather than by a unique id.
++const installCommands = new Map(
++  [...document.querySelectorAll('pre[data-package]')].map(pre => [pre.dataset.package, pre]));
+ for (const button of document.querySelectorAll('[data-copy]')) {
+   button.addEventListener('click', async () => {
+-    const code = document.getElementById(button.dataset.copy);
++    const code = installCommands.get(button.dataset.copy) ?? document.getElementById(button.dataset.copy);
+     const status = button.closest('.copy-region').querySelector('[role="status"]');
+     try {
+       await navigator.clipboard.writeText(code.textContent);

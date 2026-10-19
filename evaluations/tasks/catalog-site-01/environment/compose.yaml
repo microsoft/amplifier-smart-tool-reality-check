@@ -1,0 +1,38 @@
+# A developer's machine with this checkout installable as if released, and a Docker daemon of its own, so every
+# universe launched in it lives inside it.
+name: reality-check-evaluation-catalog-site-01
+
+x-dtu:
+  description: A developer's Linux machine with a nested Docker daemon, where reality-check is installed and evaluated
+  twin_machine: twin
+  repositories:
+    - path: ../../../..
+      url: https://github.com/microsoft/amplifier-smart-tool-reality-check
+  rewrites:
+    - match: microsoft.github.io/amplifier-smart-tools-catalog
+      target: http://catalog-site:8080/amplifier-smart-tools-catalog
+
+services:
+  twin:
+    build:
+      context: ../../../environment
+    # A nested daemon has no unprivileged path. This weakens the container boundary, and is this profile's
+    # decision to make: the twin runs only what an evaluation runs.
+    privileged: true
+    command: [sudo, dind, dockerd, --host=unix:///var/run/docker.sock]
+    # Chromium crashes with Docker's default 64 MB of shared memory.
+    shm_size: 2gb
+    environment:
+      GH_TOKEN: ${GH_TOKEN:-}
+    healthcheck:
+      test: [CMD, docker, info]
+      interval: 3s
+      start_period: 60s
+
+  # The catalog as it is about to be shared, at the URL it is published at. The image is built on the host first.
+  catalog-site:
+    image: catalog-site:eval
+    pull_policy: never
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/amplifier-smart-tools-catalog/"]
+      interval: 2s

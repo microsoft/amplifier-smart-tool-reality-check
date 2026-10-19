@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from typing import NamedTuple
 
-from harness.tasks import EvaluationError
+from common.context import EvaluationError
 
 from reality_check.schemas import AgentProvider
 
@@ -40,9 +40,9 @@ PROVIDERS: dict[AgentProvider, Provider] = {
 
 
 def provider(name: AgentProvider) -> Provider:
-    """The named provider, or a failure naming the ones the harness can set up."""
+    """The named provider, or a failure naming the ones the evaluations can set up."""
     if name not in PROVIDERS:
-        raise EvaluationError(f"The harness cannot set up {name}; it can set up: {', '.join(PROVIDERS)}.")
+        raise EvaluationError(f"The evaluations cannot set up {name}; it can set up: {', '.join(PROVIDERS)}.")
     return PROVIDERS[name]
 
 
