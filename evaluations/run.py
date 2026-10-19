@@ -1,28 +1,35 @@
-"""Evaluate reality-check's capabilities on tasks, each run in its own evaluation environment, many at once.
+"""Evaluate reality-check's capabilities on tasks, each run in its own evaluation environment, all tasks at once.
 
-uv run evaluations/run.py run --task excalidraw-01 --model gpt-6.1-sol --repeat 3 --parallel 3
+uv run evaluations/run.py list
+uv run evaluations/run.py run --task excalidraw-01 --model gpt-6.1-sol --repeat 3
 uv run evaluations/run.py cleanup
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+import importlib.util
 import json
 from pathlib import Path
 import re
 import secrets
-import tempfile
 import threading
+import traceback
+from types import ModuleType
 from typing import Annotated
 
-from harness import images, providers
-from harness.environment import destroy_leftovers
-from harness.evaluation import Live, Run, RunRecord, RunSpec
-from harness.tasks import EvaluationError, Task, load_task, task_names
+from common import providers
+from common.context import EvaluationError, Live, RunContext, RunRecord, RunSpec
+from common.environment import destroy_leftovers
 import typer
 
 from reality_check.schemas import DEFAULT_INTELLIGENCE_MODELS, AgentProvider, ReasoningEffort
 
-RUNS_DIRECTORY = Path(__file__).resolve().parent / "runs"
+EVALUATIONS = Path(__file__).resolve().parent
+TASKS_DIRECTORY = EVALUATIONS / "tasks"
+RUNS_DIRECTORY = EVALUATIONS / "runs"
+
+TaskRun = Callable[[RunContext], None]
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 _print_lock = threading.Lock()
@@ -31,6 +38,33 @@ _print_lock = threading.Lock()
 def _print(line: str) -> None:
     with _print_lock:
         typer.echo(f"{datetime.now().strftime('%H:%M:%S')} {line}", err=True)
+
+
+def task_names() -> list[str]:
+    """Every task under the tasks directory, by name."""
+    return sorted(path.parent.name for path in TASKS_DIRECTORY.glob("*/task.py"))
+
+
+def load_task(name: str) -> ModuleType:
+    """The named task's module, checked to have `DESCRIPTION` and `run`."""
+    path = TASKS_DIRECTORY / name / "task.py"
+    if not path.is_file():
+        raise EvaluationError(f"No task {name!r}; the tasks are: {', '.join(task_names())}.")
+    spec = importlib.util.spec_from_file_location(f"tasks.{name}", path)
+    if spec is None or spec.loader is None:
+        raise EvaluationError(f"{path} cannot be loaded as a module.")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if not isinstance(getattr(module, "DESCRIPTION", None), str) or not callable(getattr(module, "run", None)):
+        raise EvaluationError(f"{path} must define DESCRIPTION, a string, and run(context).")
+    return module
+
+
+@app.command("list")
+def list_tasks() -> None:
+    """List every task with its description."""
+    for name in task_names():
+        typer.echo(f"{name}\n  {load_task(name).DESCRIPTION}\n")
 
 
 @app.command()
@@ -45,7 +79,7 @@ def run(
     ] = None,
     reasoning_effort: Annotated[ReasoningEffort, typer.Option("--reasoning-effort")] = "medium",
     repeat: Annotated[int, typer.Option("--repeat", min=1, help="Runs of each task and model.")] = 1,
-    parallel: Annotated[int, typer.Option("--parallel", min=1, help="Runs at the same time.")] = 2,
+    parallel: Annotated[int, typer.Option("--parallel", min=1, help="Runs of one task at the same time.")] = 1,
     judge_agent_provider: Annotated[AgentProvider, typer.Option("--judge-agent-provider")] = "copilot",
     judge_model: Annotated[
         str | None, typer.Option("--judge-model", help="The judge provider's default when omitted.")
@@ -54,16 +88,19 @@ def run(
     judge_timeout_seconds: Annotated[int, typer.Option("--judge-timeout-seconds", min=1)] = 1800,
     keep: Annotated[bool, typer.Option("--keep", help="Leave each evaluation environment running.")] = False,
 ) -> None:
-    """Run every task x model x repeat, and write a batch directory under evaluations/runs."""
+    """Run every task x model x repeat, and write a batch directory under evaluations/runs.
+
+    Tasks run at the same time as each other; the runs of one task run `--parallel` at a time.
+    """
     try:
-        tasks = [load_task(name) for name in (task or task_names())]
+        tasks = {name: load_task(name).run for name in (task or task_names())}
         for name in dict.fromkeys([agent_provider, judge_agent_provider]):
             providers.export_credentials(name)
     except EvaluationError as error:
         raise typer.BadParameter(str(error)) from error
     specs = [
         RunSpec(
-            task=each.name,
+            task=name,
             agent_provider=agent_provider,
             model=each_model,
             reasoning_effort=reasoning_effort,
@@ -74,57 +111,21 @@ def run(
             judge_timeout_seconds=judge_timeout_seconds,
             keep=keep,
         )
-        for each in tasks
+        for name in tasks
         for each_model in (model or [DEFAULT_INTELLIGENCE_MODELS[agent_provider]])
         for index in range(1, repeat + 1)
     ]
     batch = RUNS_DIRECTORY / f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(3)}"
     batch.mkdir(parents=True)
-    with tempfile.TemporaryDirectory() as scratch:
-        archives = {}
-        for each in tasks:
-            if each.images:
-                _print(f"building the images of {each.name}")
-            try:
-                archives[each.name] = images.build(each, Path(scratch), batch / "logs" / f"images-{each.name}.log")
-            except EvaluationError as error:
-                raise typer.BadParameter(str(error)) from error
-        _run_batch(batch, tasks, specs, archives, parallel)
-
-
-def _run_batch(
-    batch: Path, tasks: list[Task], specs: list[RunSpec], archives: dict[str, Path | None], parallel: int
-) -> None:
-    by_name = {each.name: each for each in tasks}
     live = Live()
-    records: dict[str, RunRecord] = {}
-    runs = [
-        Run(
-            spec,
-            by_name[spec.task],
-            batch / _slug(f"{spec.task}-{spec.agent_provider}-{spec.model}-{spec.repeat}"),
-            archives[spec.task],
-            live,
-            _print,
-        )
-        for spec in specs
-    ]
-    _print(f"batch {batch} with {len(runs)} runs, {parallel} at a time")
-    executor = ThreadPoolExecutor(max_workers=parallel)
+    _print(f"batch {batch} with {len(specs)} runs of {len(tasks)} tasks, {parallel} at a time per task")
     try:
-        futures = {executor.submit(each.execute): each for each in runs}
-        for future in as_completed(futures):
-            record = future.result()
-            records[record.run_id] = record
-            _write_batch(batch, specs, records)
+        records = run_batch(batch, tasks, specs, parallel, live)
     except KeyboardInterrupt:
         _print("interrupted; destroying the running evaluation environments")
-        executor.shutdown(wait=False, cancel_futures=True)
         for universe in live.destroy_all():
             _print(f"destroyed {universe}")
         raise typer.Exit(130) from None
-    executor.shutdown()
-    _write_batch(batch, specs, records)
     for record in records.values():
         typer.echo(
             json.dumps(
@@ -145,6 +146,64 @@ def cleanup() -> None:
     """Destroy every evaluation environment on this machine, including ones a killed batch left running."""
     for universe in destroy_leftovers():
         typer.echo(f"destroyed {universe}")
+
+
+def run_batch(
+    batch: Path, tasks: dict[str, TaskRun], specs: list[RunSpec], parallel: int, live: Live
+) -> dict[str, RunRecord]:
+    """Run every spec: one thread per task, and up to `parallel` runs of a task at the same time."""
+    records: dict[str, RunRecord] = {}
+    lock = threading.Lock()
+    stopped = threading.Event()
+
+    def execute(spec: RunSpec) -> None:
+        if stopped.is_set():
+            return
+        directory = batch / _slug(f"{spec.task}-{spec.agent_provider}-{spec.model}-{spec.repeat}")
+        record = _execute(tasks[spec.task], RunContext(spec, directory, live, _print))
+        with lock:
+            records[record.run_id] = record
+            _write_batch(batch, specs, records)
+
+    def run_task(name: str) -> None:
+        with ThreadPoolExecutor(max_workers=parallel) as runs:
+            for future in [runs.submit(execute, spec) for spec in specs if spec.task == name]:
+                future.result()
+
+    executor = ThreadPoolExecutor(max_workers=max(len(tasks), 1))
+    try:
+        for future in [executor.submit(run_task, name) for name in tasks]:
+            future.result()
+    except KeyboardInterrupt:
+        # Runs not started yet never start; the caller destroys the environments of the ones running.
+        stopped.set()
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise
+    executor.shutdown()
+    _write_batch(batch, specs, records)
+    return records
+
+
+def _execute(task: TaskRun, context: RunContext) -> RunRecord:
+    """One run, start to end; a failure is recorded in the run, never raised."""
+    context.save()
+    try:
+        task(context)
+        context.record.status = "completed"
+    except Exception as error:
+        context.record.status = "failed"
+        context.record.error = f"{type(error).__name__}: {error}" + (context.record.error or "")
+        (context.directory / "logs").mkdir(parents=True, exist_ok=True)
+        (context.directory / "logs" / "harness-error.txt").write_text(traceback.format_exc(), encoding="utf-8")
+    context.record.ended_at = datetime.now(UTC)
+    context.save()
+    kept = (
+        f"; kept: digital-twin-universe destroy --id {context.record.universe_id}"
+        if context.spec.keep and context.record.universe_id
+        else ""
+    )
+    context.report(f"{context.record.status}, score {context.record.score}{kept}")
+    return context.record
 
 
 def _write_batch(batch: Path, specs: list[RunSpec], records: dict[str, RunRecord]) -> None:

@@ -29,7 +29,7 @@ $rubric
 - Its full session, every message and tool call: `$session`
 - Every file it made or changed, and what it installed: `$changes`
 - The project, as it left it: `$project`
-- Digital Twin Universe, to launch the task's universe yourself: `$dtu`
+- Digital Twin Universe, to launch the task's universe yourself: `$dtu`$materials
 
 ## How to grade
 

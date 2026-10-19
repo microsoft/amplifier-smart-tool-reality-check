@@ -1,7 +1,8 @@
 """Runs inside the evaluation environment, with reality-check installed beside it: the judge agent.
 
-`judge.py CONFIG` reads the prompt, schema, and model from CONFIG, runs one agent through reality-check's
-intelligence, writes each event to events.jsonl beside CONFIG as it happens, and the result to result.json.
+`judge_in_environment.py CONFIG` reads the prompt, schema, and model from CONFIG, runs one agent through
+reality-check's intelligence, writes each event to events.jsonl beside CONFIG as it happens, and the result to
+result.json.
 """
 
 import asyncio
