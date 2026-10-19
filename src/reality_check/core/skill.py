@@ -34,6 +34,18 @@ CAPABILITIES = (
         skill="capabilities/check_software/skill_cancel_check.md",
     ),
     Capability(
+        "read-check-activity",
+        "Read a check's state and what its agent said, thought, and did, from any process; one tool call in full.",
+        model_backed=False,
+        skill="capabilities/check_software/skill_read_check_activity.md",
+    ),
+    Capability(
+        "list-intelligence-models",
+        "List the models a check runs on and the reasoning efforts each takes.",
+        model_backed=False,
+        skill="capabilities/check_software/skill_list_intelligence_models.md",
+    ),
+    Capability(
         "reaching-software-skill",
         "Print the skill for reaching software where it runs: LAN URLs, SSH and Tailscale, remote universes.",
         model_backed=False,

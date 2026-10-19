@@ -50,11 +50,15 @@ uv tool uninstall reality-check
 ```bash
 reality-check manifest
 
-reality-check check-software --request "Check that a new user can sign up" --target http://localhost:3000 > check.jsonl &
+reality-check check-software --request "Check that a new user can sign up" --target http://localhost:3000 --detach
+
+reality-check read-check-activity --check-id CHECK_ID [--after CURSOR] [--tool-call-id ID]
 
 reality-check steer-check --check-id CHECK_ID --message "Skip the settings pages"
 
 reality-check cancel-check --check-id CHECK_ID
+
+reality-check list-intelligence-models
 
 reality-check reaching-software-skill # or using-software-skill, gathering-evidence-skill
 ```

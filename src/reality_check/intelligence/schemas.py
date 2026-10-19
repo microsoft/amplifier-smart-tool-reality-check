@@ -10,7 +10,15 @@ from reality_check.schemas import DEFAULT_INTELLIGENCE_REASONING_EFFORT, Reasoni
 
 # How a steering message lands: in the current turn, when the agent next reads input, or by restarting the run.
 Steering = Literal["mid-turn", "queued", "restart"]
-AgentEventKind = Literal["message", "tool_call", "tool_result", "usage", "terminal"]
+AgentEventKind = Literal["message", "reasoning", "tool_call", "tool_result", "usage", "terminal"]
+# The images an agent can be shown, by suffix.
+IMAGE_MEDIA_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
 
 
 class HostWorkspace(BaseModel):
@@ -36,7 +44,9 @@ class AgentRequest(BaseModel):
     workspace: HostWorkspace | None = Field(
         default=None, description="The agent's working directory; None leaves it to the agent provider"
     )
-    reasoning_effort: ReasoningEffort = DEFAULT_INTELLIGENCE_REASONING_EFFORT
+    reasoning_effort: ReasoningEffort | None = Field(
+        default=DEFAULT_INTELLIGENCE_REASONING_EFFORT, description="None sends none, for a model that takes none"
+    )
     timeout_seconds: int = Field(gt=0)
     resume: str | None = Field(
         default=None,
@@ -50,6 +60,12 @@ class AgentRequest(BaseModel):
     )
     output_schema: dict[str, Any] | None = Field(
         default=None, description="JSON schema the structured output must satisfy; None asks for text only"
+    )
+    images: list[Path] = Field(default_factory=list, description="Images shown to the agent with the prompt")
+    session_directory: Path | None = Field(
+        default=None,
+        description="Where the agent provider keeps this run's session, so it can be read and resumed from there; None "
+        "leaves it where the agent provider keeps its sessions",
     )
 
 

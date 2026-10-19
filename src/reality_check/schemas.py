@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal, NamedTuple, Self, get_args
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,8 @@ DEFAULT_INTELLIGENCE_MODELS: dict[AgentProvider, str] = {
     "claude": "claude-opus-5-5",
 }
 DEFAULT_INTELLIGENCE_REASONING_EFFORT: ReasoningEffort = "medium"
+# Who started or steered a check when the caller does not say; the tool cannot know, so it never guesses.
+DEFAULT_ORIGIN = "unknown"
 
 SEMVER_PATTERN = r"^\d+\.\d+\.\d+$"
 SLUG_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
@@ -76,12 +78,77 @@ class Capability(NamedTuple):
 
 # endregion
 
+# region: Intelligence models
+
+ALL_EFFORTS: list[ReasoningEffort] = list(get_args(ReasoningEffort))
+
+
+class IntelligenceModel(BaseModel):
+    """One model Reality Check runs its agent on, and the reasoning efforts it takes."""
+
+    agent_provider: AgentProvider
+    id: str = Field(description="The agent provider's own model ID")
+    label: str
+    reasoning_efforts: list[ReasoningEffort] = Field(description="Empty when the model takes none, and none is sent")
+    vision: bool = Field(description="Whether the model can be shown images")
+
+
+# The models Reality Check supports and recommends, not a mirror of what an agent provider offers.
+INTELLIGENCE_MODELS: tuple[IntelligenceModel, ...] = (
+    IntelligenceModel(
+        agent_provider="copilot", id="gpt-6.1-sol", label="GPT-6.1 Sol", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="copilot", id="gpt-6-astra", label="GPT-6 Astra", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="copilot", id="gpt-6-luna", label="GPT-6 Luna", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="copilot",
+        id="claude-sonnet-5.5",
+        label="Claude Sonnet 5.5",
+        reasoning_efforts=ALL_EFFORTS,
+        vision=True,
+    ),
+    IntelligenceModel(
+        agent_provider="copilot",
+        id="claude-opus-5.5",
+        label="Claude Opus 5.5",
+        reasoning_efforts=ALL_EFFORTS,
+        vision=True,
+    ),
+    IntelligenceModel(agent_provider="copilot", id="auto", label="Auto", reasoning_efforts=[], vision=False),
+)
+
+
+class IntelligenceChoice(BaseModel):
+    """What runs a check's agent: the agent provider, the model, and how hard it thinks."""
+
+    agent_provider: AgentProvider
+    model: str
+    reasoning_effort: ReasoningEffort | None
+
+
+class IntelligenceModels(BaseModel):
+    """The models a check can run on, each with its reasoning efforts."""
+
+    models: list[IntelligenceModel] = Field(description="Those of the agent providers that are installed")
+    default: IntelligenceChoice = Field(description="What `check_software` runs with when given none")
+
+
+# endregion
+
 # region: Check software
 
 # When the agent stops to ask before the work starts.
 AskFirst = Literal["when-off", "always", "never"]
 CheckStatus = Literal["running", "done", "cancelled"]
-CheckEventKind = Literal["started", "progress", "tool", "usage", "steered", "finished", "failed"]
+# A check's status as its record and its process tell it: `crashed` is running by its record with its process gone.
+CheckState = Literal["running", "crashed", "done", "cancelled", "failed"]
+CheckEventKind = Literal["started", "progress", "reasoning", "tool", "usage", "steered", "finished", "failed"]
+# The fields of a tool event's data that hold its arguments and result in full.
+FULL_FIELDS = ("arguments", "result", "detailed_result")
 # Relative, so checks are kept beside the project the caller works in.
 DEFAULT_CHECKS_DIRECTORY = Path(".agents/reality-check")
 
@@ -115,6 +182,14 @@ class CheckEvent(BaseModel):
     text: str = ""
     data: dict[str, Any] = Field(default_factory=dict)
 
+    def brief(self) -> Self:
+        """The event without a tool's full arguments and result, which events.jsonl keeps."""
+        if self.kind != "tool":
+            return self
+        return self.model_copy(
+            update={"data": {key: value for key, value in self.data.items() if key not in FULL_FIELDS}}
+        )
+
 
 class CheckRecord(BaseModel):
     """A check as its check.json keeps it, so other processes and later checks can find it."""
@@ -128,11 +203,47 @@ class CheckRecord(BaseModel):
     keep_running: bool
     agent_provider: AgentProvider
     model: str
-    reasoning_effort: ReasoningEffort
+    reasoning_effort: ReasoningEffort | None = Field(description="What was sent; None when the model takes none")
     session_id: str | None = None
     status: CheckStatus | Literal["failed"] = "running"
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     ended_at: datetime | None = None
+    pid: int | None = Field(
+        default=None, description="The process running the check; a running check whose process is gone has crashed"
+    )
+    pid_started: float | None = Field(
+        default=None,
+        description="When that process started, in seconds since boot, so a later process given its pid is not taken for it",
+    )
+    last_event: datetime | None = None
+    origin: str = DEFAULT_ORIGIN
+    images: list[Path] | None = Field(
+        default=None, description="The images shown to the agent, as copied into the check"
+    )
+    detached: bool = Field(default=False, description="Whether the check runs in a process of its own")
+
+
+ActivityKind = Literal["request", "said", "reasoning", "tool", "tool-result", "usage", "steered", "ended"]
+
+
+class ActivityEntry(BaseModel):
+    """One thing in a check's activity: what was asked, what its agent said, thought, and did, and how it ended."""
+
+    time: datetime
+    kind: ActivityKind
+    text: str
+    origin: str | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class CheckActivity(BaseModel):
+    """A check as it stands and its activity, from the start or from an earlier read's cursor."""
+
+    check: CheckRecord
+    state: CheckState
+    process_log: Path | None = Field(description="What the check's own process printed, for a detached check")
+    entries: list[ActivityEntry]
+    cursor: int = Field(description="Pass as `after` to read only what comes next")
 
 
 # endregion

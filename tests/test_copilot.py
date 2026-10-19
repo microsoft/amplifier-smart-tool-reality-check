@@ -11,9 +11,10 @@ import pytest
 
 pytest.importorskip("copilot")
 
-from copilot import PermissionHandler, Tool, ToolInvocation
+from copilot import ModelCapabilities, ModelInfo, ModelLimits, ModelSupports, PermissionHandler, Tool, ToolInvocation
 from copilot.session_events import (
     AssistantMessageData,
+    AssistantReasoningData,
     AssistantUsageCopilotUsage,
     AssistantUsageData,
     SessionEvent,
@@ -21,6 +22,7 @@ from copilot.session_events import (
     SessionEventType,
     SessionIdleData,
     ToolExecutionCompleteData,
+    ToolExecutionCompleteError,
     ToolExecutionCompleteResult,
     ToolExecutionStartData,
 )
@@ -28,8 +30,25 @@ from copilot.session_events import (
 from reality_check.intelligence import copilot as adapter
 from reality_check.intelligence.copilot import CopilotIntelligence
 from reality_check.intelligence.schemas import AgentEvent, AgentRequest, HostWorkspace, McpServer
+from reality_check.schemas import RealityCheckError
 
 SESSION = "fake-session"
+
+
+def model_info(model_id: str, efforts: list[str] | None, vision: bool = True) -> ModelInfo:
+    supports = ModelSupports(vision=vision, reasoning_effort=efforts is not None)
+    return ModelInfo(
+        id=model_id,
+        name=model_id,
+        capabilities=ModelCapabilities(supports=supports, limits=ModelLimits()),
+        supported_reasoning_efforts=efforts,
+    )
+
+
+MODELS = [
+    model_info("gpt-6.1-sol", ["none", "low", "medium", "high", "xhigh", "max"]),
+    model_info("auto", None, vision=False),
+]
 
 
 def event(event_type: SessionEventType, data: SessionEventData) -> SessionEvent:
@@ -58,8 +77,9 @@ class FakeSession:
         for each in events:
             asyncio.get_running_loop().call_soon(self._on_event, each)
 
-    async def send(self, prompt: str, mode: str | None = None) -> str:
+    async def send(self, prompt: str, attachments: list[Any] | None = None, mode: str | None = None) -> str:
         self._world.sends.append((prompt, mode))
+        self._world.attachments.append(attachments)
         self._world.scripts.pop(0)(self)
         return "message-id"
 
@@ -99,6 +119,9 @@ class FakeWorld:
         self.scripts = list(scripts)
         self.options: list[dict[str, Any]] = []
         self.sends: list[tuple[str, str | None]] = []
+        self.attachments: list[list[Any] | None] = []
+        self.calls: list[str] = []
+        self.resumed: list[str] = []
         self.aborted = 0
         self.stopped = 0
         self.failure: Exception | None = None
@@ -108,16 +131,27 @@ class FakeWorld:
 
         class Client:
             async def start(self) -> None:
-                pass
+                world.calls.append("start")
 
             async def stop(self) -> None:
                 world.stopped += 1
 
+            async def list_models(self) -> list[ModelInfo]:
+                world.calls.append("list_models")
+                return MODELS
+
             async def create_session(self, **options: Any) -> FakeSession:
+                world.calls.append("create_session")
                 if world.failure is not None:
                     raise world.failure
                 world.options.append(options)
                 return FakeSession(world, options, SESSION)
+
+            async def resume_session(self, session_id: str, **options: Any) -> FakeSession:
+                world.calls.append("resume_session")
+                world.resumed.append(session_id)
+                world.options.append(options)
+                return FakeSession(world, options, session_id)
 
         return Client()
 
@@ -221,7 +255,8 @@ async def test_sdk_events_become_agent_events_ending_in_one_terminal(world: Call
     call, outcome, usage, said, terminal = events
     assert call.text == 'bash {"command": "echo hello"}'
     assert call.data["tool_name"] == "bash"
-    assert outcome.data == {"tool_call_id": "1", "tool_name": "bash", "success": True}
+    assert call.data["arguments"] == {"command": "echo hello"}
+    assert outcome.data == {"tool_call_id": "1", "tool_name": "bash", "success": True, "result": "x" * 2000}
     assert len(outcome.text) < 2000
     assert usage.data["input_tokens"] == 10
     assert usage.data["cost"] == 1.0
@@ -339,3 +374,115 @@ async def test_no_valid_submission_after_the_retries_is_the_result_s_error(world
     assert result.output is None
     assert result.error == "No valid submission after 2 retries: the submit tool was never called"
     assert len(fake.sends) == 3
+
+
+async def test_reasoning_becomes_one_reasoning_event_and_empty_reasoning_none(world: Callable[..., FakeWorld]) -> None:
+    def script(session: FakeSession) -> None:
+        session.emit(
+            event(SessionEventType.ASSISTANT_REASONING, AssistantReasoningData(content="Think.", reasoning_id="r1")),
+            event(SessionEventType.ASSISTANT_REASONING, AssistantReasoningData(content=" ", reasoning_id="r2")),
+            message("done"),
+            idle(),
+        )
+
+    world(script)
+
+    events = await collect(await CopilotIntelligence().start(request()))
+
+    assert [each.kind for each in events] == ["reasoning", "message", "terminal"]
+    assert (events[0].text, events[0].data) == ("Think.", {"reasoning_id": "r1"})
+
+
+async def test_a_long_tool_result_keeps_its_full_and_detailed_content_and_a_failure_its_error(
+    world: Callable[..., FakeWorld],
+) -> None:
+    long = "y" * 3000
+
+    def script(session: FakeSession) -> None:
+        session.emit(
+            event(
+                SessionEventType.TOOL_EXECUTION_START,
+                ToolExecutionStartData(tool_call_id="1", tool_name="view", arguments={"path": "z" * 1000}),
+            ),
+            event(
+                SessionEventType.TOOL_EXECUTION_COMPLETE,
+                ToolExecutionCompleteData(
+                    success=True,
+                    tool_call_id="1",
+                    result=ToolExecutionCompleteResult(content=long, detailed_content=long + "!"),
+                ),
+            ),
+            event(
+                SessionEventType.TOOL_EXECUTION_COMPLETE,
+                ToolExecutionCompleteData(
+                    success=False, tool_call_id="2", error=ToolExecutionCompleteError(message="no such file")
+                ),
+            ),
+            idle(),
+        )
+
+    world(script)
+
+    call, result, failure, _ = await collect(await CopilotIntelligence().start(request()))
+
+    assert len(call.text) < 600
+    assert call.data["arguments"] == {"path": "z" * 1000}
+    assert len(result.text) < 600
+    assert (result.data["result"], result.data["detailed_result"]) == (long, long + "!")
+    assert (failure.text, failure.data["error"], failure.data["success"]) == ("no such file", "no such file", False)
+
+
+async def test_images_are_file_attachments_with_a_display_name_on_the_first_send_only(
+    world: Callable[..., FakeWorld], tmp_path: Path
+) -> None:
+    image = tmp_path / "shot.png"
+    fake = world(submits(None), submits({"score": 1}))
+
+    await (await CopilotIntelligence().start(request(images=[image], output_schema=SCHEMA))).result()
+
+    assert fake.attachments == [[{"type": "file", "path": str(image), "displayName": "shot.png"}], None]
+
+
+async def test_the_session_directory_is_the_config_directory_on_create_and_resume_and_no_effort_sends_none(
+    world: Callable[..., FakeWorld], tmp_path: Path
+) -> None:
+    fake = world(answers("one"), answers("two"))
+
+    await (await CopilotIntelligence().start(request(session_directory=tmp_path / "session"))).result()
+    await (
+        await CopilotIntelligence().start(
+            request(resume=SESSION, session_directory=tmp_path / "again").model_copy(
+                update={"model": "auto", "reasoning_effort": None}
+            )
+        )
+    ).result()
+
+    created, resumed = fake.options
+    assert created["config_directory"] == str(tmp_path / "session")
+    assert created["reasoning_effort"] == "medium"
+    assert resumed["config_directory"] == str(tmp_path / "again")
+    assert "reasoning_effort" not in resumed
+    assert fake.resumed == [SESSION]
+
+
+@pytest.mark.parametrize(
+    ("fields", "code"),
+    [
+        ({"model": "gemini-4-argon"}, "model-not-available"),
+        ({"reasoning_effort": "none"}, "bad-reasoning-effort"),
+        ({"model": "auto", "reasoning_effort": "low"}, "bad-reasoning-effort"),
+        ({"model": "auto", "reasoning_effort": None, "images": [Path("shot.png")]}, "model-without-vision"),
+    ],
+)
+async def test_the_run_s_own_client_refuses_a_model_this_account_cannot_run_as_asked_before_a_session(
+    world: Callable[..., FakeWorld], fields: dict[str, Any], code: str
+) -> None:
+    fake = world()
+    asked = request().model_copy(update=fields)
+
+    with pytest.raises(RealityCheckError) as failure:
+        await CopilotIntelligence().start(asked)
+
+    assert failure.value.code == code
+    assert fake.calls == ["start", "list_models"]
+    assert fake.stopped == 1
