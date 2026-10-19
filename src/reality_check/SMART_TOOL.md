@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.1.0
+version: 0.2.0
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding
 use_cases:
@@ -116,8 +116,9 @@ Results go to stdout, diagnostics to stderr. A failure prints a message naming w
 wrong and how to fix it, and exits non-zero: 1 for a failure the tool can name, 2 for a
 bad invocation. Never treat an empty result as success.
 
-`check-software` runs for minutes: start it in the background with its output in a file, and
-read the file. Its last line is `finished` or `failed`.
+`check-software` runs for minutes: start it with `--detach`, which prints its `started` event
+and exits, then follow it with `read-check-activity` until an `ended` entry. `list-intelligence-models`
+lists the models it runs on.
 
 ## Choosing a surface
 

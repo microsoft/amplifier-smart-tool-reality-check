@@ -15,13 +15,16 @@ from copilot import (
     CopilotSession,
     MCPServerConfig,
     MCPStdioServerConfig,
+    ModelInfo,
     PermissionHandler,
     Tool,
     ToolInvocation,
     ToolResult,
 )
+from copilot.session import Attachment
 from copilot.session_events import (
     AssistantMessageData,
+    AssistantReasoningData,
     AssistantUsageData,
     SessionErrorData,
     SessionEvent,
@@ -45,7 +48,7 @@ from reality_check.intelligence.submission import (
     resubmit_prompt,
     submission_problem,
 )
-from reality_check.schemas import RealityCheckError
+from reality_check.schemas import ALL_EFFORTS, RealityCheckError
 
 SHORTENED_LENGTH = 500
 # How long an aborted turn may take to go idle before the run stops waiting for it.
@@ -147,7 +150,6 @@ class CopilotRun:
         return result
 
     async def _turns(self) -> AgentResult:
-        await self._client.start()
         options = self._session_options()
         if self._request.resume is not None:
             session = await self._client.resume_session(self._request.resume, **options)
@@ -158,11 +160,16 @@ class CopilotRun:
         self._last_text = ""
         schema = self._request.output_schema
         prompt = self._request.prompt
+        # The runtime echoes an attachment back in an event it cannot parse without a display name.
+        attachments: list[Attachment] = [
+            {"type": "file", "path": str(path), "displayName": path.name} for path in self._request.images
+        ]
         invalid = 0
         while True:
             if self._cancelling:
                 return self._cancelled()
-            await self._turn(session, prompt)
+            await self._turn(session, prompt, attachments)
+            attachments = []
             if self._cancelling:
                 return self._cancelled()
             if self._session_error is not None:
@@ -182,12 +189,12 @@ class CopilotRun:
             self._submitted = None
             prompt = resubmit_prompt(problem)
 
-    async def _turn(self, session: CopilotSession, prompt: str) -> None:
+    async def _turn(self, session: CopilotSession, prompt: str, attachments: list[Attachment]) -> None:
         """Send one prompt and wait until the session goes idle; a resubmission keeps the earlier turn's text."""
         self._idle.clear()
         self._last_api_call = None
         self._session_error = None
-        await session.send(prompt)
+        await session.send(prompt, attachments=attachments or None)
         if not self._running.done():
             self._running.set_result(None)
         await self._idle.wait()
@@ -208,11 +215,15 @@ class CopilotRun:
         request = self._request
         options: dict[str, Any] = {
             "model": request.model,
-            "reasoning_effort": request.reasoning_effort,
             "on_permission_request": PermissionHandler.approve_all,
             "skip_custom_instructions": True,
             "on_event": self._on_event,
         }
+        if request.reasoning_effort is not None:
+            options["reasoning_effort"] = request.reasoning_effort
+        if request.session_directory is not None:
+            # The session's whole state is kept there, and resumed only from there.
+            options["config_directory"] = str(request.session_directory)
         if request.workspace is not None:
             options["working_directory"] = str(request.workspace.path)
         if request.mcp_servers:
@@ -252,31 +263,39 @@ class CopilotRun:
                     self._note_message(data)
                 if data.content:
                     self._emit("message", data.content, agent, event)
+            case AssistantReasoningData() as data if data.content.strip():
+                self._emit("reasoning", data.content, {"reasoning_id": data.reasoning_id, **agent}, event)
             case ToolExecutionStartData() as data:
                 self._tool_names[data.tool_call_id] = data.tool_name
                 arguments = "" if data.arguments is None else shorten(json.dumps(data.arguments, default=str))
                 self._emit(
                     "tool_call",
                     f"{data.tool_name} {arguments}".strip(),
-                    {"tool_call_id": data.tool_call_id, "tool_name": data.tool_name, "arguments": arguments, **agent},
-                    event,
-                )
-            case ToolExecutionCompleteData() as data:
-                if data.result is not None:
-                    content = data.result.content
-                else:
-                    content = data.error.message if data.error is not None else ""
-                self._emit(
-                    "tool_result",
-                    shorten(content),
                     {
                         "tool_call_id": data.tool_call_id,
-                        "tool_name": self._tool_names.get(data.tool_call_id, ""),
-                        "success": data.success,
+                        "tool_name": data.tool_name,
+                        "arguments": data.arguments,
                         **agent,
                     },
                     event,
                 )
+            case ToolExecutionCompleteData() as data:
+                outcome: dict[str, Any] = {
+                    "tool_call_id": data.tool_call_id,
+                    "tool_name": self._tool_names.get(data.tool_call_id, ""),
+                    "success": data.success,
+                    **agent,
+                }
+                content = ""
+                if data.result is not None:
+                    content = outcome["result"] = data.result.content
+                    detailed = data.result.detailed_content
+                    if detailed is not None and detailed != content:
+                        outcome["detailed_result"] = detailed
+                if data.error is not None:
+                    outcome["error"] = data.error.message
+                    content = content or data.error.message
+                self._emit("tool_result", shorten(content), outcome, event)
             case AssistantUsageData() as data:
                 usage = {
                     "model": data.model,
@@ -318,7 +337,24 @@ class CopilotIntelligence:
     async def start(self, request: AgentRequest) -> CopilotRun:
         token = await asyncio.to_thread(self._github_token)
         working_directory = str(request.workspace.path) if request.workspace is not None else None
-        run = CopilotRun(CopilotClient(working_directory=working_directory, github_token=token), request)
+        client = CopilotClient(working_directory=working_directory, github_token=token)
+        try:
+            await client.start()
+            # From the run's own client, so the account's models are known without starting another runtime.
+            problem = copilot_model_problem(await client.list_models(), request)
+        except Exception as error:
+            with contextlib.suppress(Exception):
+                await client.stop()
+            raise RealityCheckError(
+                code="copilot-start-failed",
+                message=f"The Copilot runtime did not start: {type(error).__name__}: {error}",
+                remedy="Check that `gh auth status` shows an account with Copilot access, then start again.",
+            ) from error
+        if problem is not None:
+            with contextlib.suppress(Exception):
+                await client.stop()
+            raise problem
+        run = CopilotRun(client, request)
         await run.running()
         return run
 
@@ -340,6 +376,38 @@ class CopilotIntelligence:
             )
         self._token = minted.stdout.strip()
         return self._token
+
+
+def copilot_model_problem(models: list[ModelInfo], request: AgentRequest) -> RealityCheckError | None:
+    """Why this Copilot account cannot run the request's model as asked, or None when it can.
+
+    The runtime runs another model in place of one it does not know, without saying so.
+    """
+    model = next((candidate for candidate in models if candidate.id == request.model), None)
+    if model is None:
+        return RealityCheckError(
+            code="model-not-available",
+            message=f"{request.model} is not one of the models this Copilot account has: "
+            f"{', '.join(candidate.id for candidate in models) or 'none'}.",
+            remedy="Pick one listed by `reality-check list-intelligence-models` that this Copilot account has.",
+        )
+    # The runtime lists "none" for some models and then refuses it.
+    efforts = [effort for effort in ALL_EFFORTS if effort in (model.supported_reasoning_efforts or [])]
+    if request.reasoning_effort is not None and request.reasoning_effort not in efforts:
+        takes = f"takes one of: {', '.join(efforts)}" if efforts else "takes none"
+        return RealityCheckError(
+            code="bad-reasoning-effort",
+            message=f"{request.model} on Copilot does not take the reasoning effort {request.reasoning_effort!r}; "
+            f"it {takes}.",
+            remedy="Pass one it takes, or leave the reasoning effort out for its default.",
+        )
+    if request.images and not model.capabilities.supports.vision:
+        return RealityCheckError(
+            code="model-without-vision",
+            message=f"{request.model} on Copilot cannot be shown images.",
+            remedy="Pick a model that can, from `reality-check list-intelligence-models`, or leave the images out.",
+        )
+    return None
 
 
 def mcp_server_config(server: McpServer) -> MCPServerConfig:

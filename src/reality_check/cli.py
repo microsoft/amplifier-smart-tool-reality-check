@@ -20,7 +20,7 @@ from reality_check import lib
 from reality_check.core.skill import DISTRIBUTION
 from reality_check.schemas import (
     DEFAULT_CHECKS_DIRECTORY,
-    DEFAULT_INTELLIGENCE_REASONING_EFFORT,
+    DEFAULT_ORIGIN,
     AgentProvider,
     AskFirst,
     CheckEvent,
@@ -152,9 +152,16 @@ def check_software(
     ] = None,
     model: Annotated[str | None, typer.Option("--model", help="The agent provider's default when omitted.")] = None,
     reasoning_effort: Annotated[
-        ReasoningEffort, typer.Option("--reasoning-effort")
-    ] = DEFAULT_INTELLIGENCE_REASONING_EFFORT,
+        ReasoningEffort | None, typer.Option("--reasoning-effort", help="medium, or none for a model that takes none.")
+    ] = None,
     timeout_seconds: Annotated[int, typer.Option("--timeout-seconds", min=1)] = 3600,
+    images: Annotated[
+        list[Path] | None, typer.Option("--image", help="An image shown to the agent with the request; repeatable.")
+    ] = None,
+    origin: Annotated[str, typer.Option("--origin", help="Who starts the check, such as app.")] = DEFAULT_ORIGIN,
+    detach: Annotated[
+        bool, typer.Option("--detach", help="Run the check in a process of its own; print its started event and exit.")
+    ] = False,
 ) -> None:
     """Check software as a user would, printing each event as a JSON line. Model-backed."""
     code = asyncio.run(
@@ -171,7 +178,11 @@ def check_software(
                 model=model,
                 reasoning_effort=reasoning_effort,
                 timeout_seconds=timeout_seconds,
-            )
+                images=images,
+                origin=origin,
+                detach=detach,
+            ),
+            detach,
         )
     )
     raise typer.Exit(code)
@@ -184,9 +195,10 @@ def steer_check(
     checks_directory: Annotated[
         Path, typer.Option("--checks-directory", help="Where checks are kept.")
     ] = DEFAULT_CHECKS_DIRECTORY,
+    origin: Annotated[str, typer.Option("--origin", help="Who sends the message, such as app.")] = DEFAULT_ORIGIN,
 ) -> None:
     """Send a message to a running check's agent. Deterministic."""
-    lib.steer_check(check_id=check_id, message=message, checks_directory=checks_directory)
+    lib.steer_check(check_id=check_id, message=message, checks_directory=checks_directory, origin=origin)
 
 
 @app.command()
@@ -198,6 +210,32 @@ def cancel_check(
 ) -> None:
     """Cancel a running check; its session can still be resumed. Deterministic."""
     lib.cancel_check(check_id=check_id, checks_directory=checks_directory)
+
+
+@app.command()
+def read_check_activity(
+    check_id: Annotated[str, typer.Option("--check-id", help="The check, running or ended.")],
+    after: Annotated[
+        int | None, typer.Option("--after", help="The cursor an earlier read returned; only what came after.")
+    ] = None,
+    tool_call_id: Annotated[
+        str | None, typer.Option("--tool-call-id", help="Only this tool call and its result, in full.")
+    ] = None,
+    checks_directory: Annotated[
+        Path, typer.Option("--checks-directory", help="Where checks are kept.")
+    ] = DEFAULT_CHECKS_DIRECTORY,
+) -> None:
+    """Print a check's state and what its agent said, thought, and did, as JSON. Deterministic."""
+    activity = lib.read_check_activity(
+        check_id=check_id, after=after, tool_call_id=tool_call_id, checks_directory=checks_directory
+    )
+    typer.echo(activity.model_dump_json(indent=2))
+
+
+@app.command()
+def list_intelligence_models() -> None:
+    """Print the models a check runs on and their reasoning efforts, as JSON. Deterministic."""
+    typer.echo(lib.list_intelligence_models().model_dump_json(indent=2))
 
 
 @app.command()
@@ -218,9 +256,17 @@ def gathering_evidence_skill() -> None:
     typer.echo(lib.gathering_evidence_skill())
 
 
-async def _check(starting: Coroutine[Any, Any, lib.CheckRun]) -> int:
-    """Run a check to its end, one JSON line per event, and the exit code its end calls for."""
+async def _check(starting: Coroutine[Any, Any, lib.CheckRun], detach: bool) -> int:
+    """Run a check to its end, one JSON line per event, and the exit code its end calls for.
+
+    A detached check goes on in its own process, so only its `started` event is printed.
+    """
     run = await starting
+    if detach:
+        async for event in run.events():
+            _print_event(event)
+            return 0
+        return 1
     with _cancelled_by_signals(run):
         async for event in run.events():
             _print_event(event)
@@ -234,7 +280,7 @@ async def _check(starting: Coroutine[Any, Any, lib.CheckRun]) -> int:
 
 def _print_event(event: CheckEvent) -> None:
     # ASCII-escaped JSON is UTF-8 on any console encoding, and echo writes the line in one call and flushes it.
-    typer.echo(json.dumps(event.model_dump(mode="json")))
+    typer.echo(json.dumps(event.brief().model_dump(mode="json")))
 
 
 @contextlib.contextmanager

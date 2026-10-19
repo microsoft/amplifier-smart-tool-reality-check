@@ -32,11 +32,19 @@ reality-check manifest
 reality-check check-software --request TEXT [--target TARGET] [--resume CHECK_ID] [--previous-checks PATH ...]
                              [--ask-first when-off|always|never] [--keep-running] [--checks-directory .agents/reality-check]
                              [--agent-provider copilot|amplifier-agent|codex|claude] [--model MODEL]
-                             [--reasoning-effort medium] [--timeout-seconds 3600]
+                             [--reasoning-effort low|medium|high|xhigh|max] [--timeout-seconds 3600]
+                             [--image PATH ...] [--origin unknown] [--detach]
 ```
 
-`lib.check_software()`, run to the end. Each `CheckEvent` is printed to stdout as one JSON line as it happens.
-A check runs for minutes, longer than most shell timeouts, so an agent starts it in the background with its output in a file, and reads the file as it needs:
+`lib.check_software()`, run to the end. Each `CheckEvent` is printed to stdout as one JSON line as it happens, in its brief form: a `tool` event without the `arguments`, `result`, and `detailed_result` that `events.jsonl` and the library keep.
+
+With `--detach`, the check runs in a process of its own: the command prints the `started` event and exits 0, or exits 1 with why the check did not start. An agent then follows it with `read-check-activity`:
+
+```bash
+reality-check check-software --request "Check that a new user can sign up" --target http://localhost:3000 --detach
+```
+
+Without it, an agent starts the check in the background with its output in a file, and reads the file as it needs:
 
 ```bash
 reality-check check-software --request "Check that a new user can sign up" --target http://localhost:3000 > check.jsonl 2> check.log &
@@ -53,7 +61,7 @@ Ctrl+C, SIGTERM, and closing the console all cancel the check the same way; its 
 ## reality-check steer-check
 
 ```bash
-reality-check steer-check --check-id CHECK_ID --message TEXT [--checks-directory .agents/reality-check]
+reality-check steer-check --check-id CHECK_ID --message TEXT [--checks-directory .agents/reality-check] [--origin unknown]
 ```
 
 `lib.steer_check()`. Prints nothing and exits 0 once the message is written; the check's events show when it is delivered.
@@ -65,6 +73,22 @@ reality-check cancel-check --check-id CHECK_ID [--checks-directory .agents/reali
 ```
 
 `lib.cancel_check()`. Prints nothing and exits 0 once the cancel is written; the check's last event shows when it has stopped.
+
+## reality-check read-check-activity
+
+```bash
+reality-check read-check-activity --check-id CHECK_ID [--after CURSOR] [--tool-call-id ID] [--checks-directory .agents/reality-check]
+```
+
+`lib.read_check_activity()`, printed as JSON.
+
+## reality-check list-intelligence-models
+
+```bash
+reality-check list-intelligence-models
+```
+
+`lib.list_intelligence_models()`, printed as JSON.
 
 ## Skills for checking software
 

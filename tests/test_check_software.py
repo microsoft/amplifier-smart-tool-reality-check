@@ -1,127 +1,38 @@
 """Drives check_software with a scripted intelligence, so no agent provider or network is needed."""
 
-import asyncio
-from collections.abc import AsyncIterator, Callable, Coroutine
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 from typing import Any
 
+from fakes import (
+    SESSION,
+    FakeIntelligence,
+    FakeRun,
+    Script,
+    Unavailable,
+    fails,
+    finishes,
+    waits_for_steering,
+    works_forever,
+)
 import pytest
 from typer.testing import CliRunner
 import yaml
 
 from reality_check import lib
 from reality_check.capabilities.check_software import check
+from reality_check.capabilities.check_software.record import process_started
 from reality_check.cli import app
 from reality_check.intelligence import interface
-from reality_check.intelligence.schemas import AgentEvent, AgentEventKind, AgentRequest, AgentResult, Steering
+from reality_check.intelligence.schemas import AgentRequest
 from reality_check.schemas import CheckEvent, CheckRecord, CheckTimeoutError, RealityCheckError
 
-SESSION = "fake-session"
 REQUEST = "Check that notes.md is followed and the page shows a button labelled Go"
 
 runner = CliRunner()
-
-
-class FakeRun:
-    """An agent run whose work is a script, which a cancel interrupts the way a drained session ends."""
-
-    def __init__(self, request: AgentRequest, script: "Script", stopped_text: str) -> None:
-        self.request = request
-        self.session_id: str | None = SESSION
-        self._stopped_text = stopped_text
-        self.steered: list[str] = []
-        self.steer_arrived = asyncio.Event()
-        self._events: list[AgentEvent] = []
-        self._appended = asyncio.Event()
-        self._cancelled = asyncio.Event()
-        self._task = asyncio.create_task(self._drive(script))
-
-    def emit(self, kind: AgentEventKind, text: str = "") -> None:
-        self._events.append(AgentEvent(kind=kind, text=text))
-        self._appended.set()
-        self._appended = asyncio.Event()
-
-    async def events(self) -> AsyncIterator[AgentEvent]:
-        index = 0
-        while True:
-            appended = self._appended
-            while index < len(self._events):
-                index += 1
-                yield self._events[index - 1]
-                if self._events[index - 1].kind == "terminal":
-                    return
-            await appended.wait()
-
-    async def steer(self, message: str) -> None:
-        self.steered.append(message)
-        self.steer_arrived.set()
-
-    async def cancel(self) -> None:
-        self._cancelled.set()
-        await asyncio.wait([self._task])
-
-    async def result(self) -> AgentResult:
-        return await asyncio.shield(self._task)
-
-    async def _drive(self, script: "Script") -> AgentResult:
-        work = asyncio.create_task(script(self))
-        cancelled = asyncio.create_task(self._cancelled.wait())
-        await asyncio.wait([work, cancelled], return_when=asyncio.FIRST_COMPLETED)
-        cancelled.cancel()
-        if work.done():
-            result = work.result()
-        else:
-            work.cancel()
-            result = AgentResult(text=self._stopped_text, cancelled=True, session_id=SESSION)
-        self.emit("terminal", result.text)
-        return result
-
-
-Script = Callable[[FakeRun], Coroutine[Any, Any, AgentResult]]
-
-
-class FakeIntelligence:
-    def __init__(self, script: Script, stopped_text: str = "Stopped early.") -> None:
-        self.implementation = "fake"
-        self._stopped_text = stopped_text
-        self.steering: Steering = "mid-turn"
-        self.runs: list[FakeRun] = []
-        self._script = script
-
-    def preflight(self) -> None:
-        pass
-
-    async def start(self, request: AgentRequest) -> FakeRun:
-        run = FakeRun(request, self._script, self._stopped_text)
-        self.runs.append(run)
-        return run
-
-
-def finishes(text: str = "# Report\n\nGo: pass") -> Script:
-    async def script(run: FakeRun) -> AgentResult:
-        run.emit("message", "Opening the page.")
-        run.emit("tool_call", "bash curl http://localhost")
-        run.emit("usage")
-        run.emit("tool_result", "x" * 2000)
-        return AgentResult(text=text, session_id=SESSION)
-
-    return script
-
-
-async def waits_for_steering(run: FakeRun) -> AgentResult:
-    await run.steer_arrived.wait()
-    return AgentResult(text=f"Did: {run.steered[0]}", session_id=SESSION)
-
-
-async def works_forever(run: FakeRun) -> AgentResult:
-    run.emit("message", "Working.")
-    await asyncio.Event().wait()
-    raise AssertionError("unreachable")
-
-
-async def fails(run: FakeRun) -> AgentResult:
-    return AgentResult(error="SessionError: model unavailable", session_id=SESSION)
 
 
 async def collect(run: lib.CheckRun) -> list[CheckEvent]:
@@ -156,10 +67,22 @@ async def test_a_check_streams_its_events_and_ends_with_the_agent_s_report(works
     events = await collect(run)
     result = await run.result()
 
-    assert [event.kind for event in events] == ["started", "progress", "tool", "usage", "tool", "finished"]
+    assert [event.kind for event in events] == [
+        "started",
+        "progress",
+        "reasoning",
+        "tool",
+        "usage",
+        "tool",
+        "finished",
+    ]
     assert events[0].data["directory"] == str(run.directory)
-    assert events[4].data["phase"] == "result"
-    assert len(events[4].text) < 600
+    assert events[2].data == {"reasoning_id": "r1"}
+    assert events[3].data["arguments"] == {"command": "curl http://localhost"}
+    assert events[5].data["phase"] == "result"
+    assert len(events[5].text) < 600
+    assert events[5].data["result"] == "x" * 2000
+    assert "result" not in events[5].brief().data
     assert result.status == "done"
     assert result.report == "# Report\n\nGo: pass"
     assert result.session_id == SESSION
@@ -326,3 +249,310 @@ def test_the_cli_prints_one_json_line_per_event_and_exits_by_how_the_check_ended
         assert lines[-1]["data"]["status"] == status
     else:
         assert "model unavailable" in result.stderr
+
+
+class RefusingRun(FakeRun):
+    async def steer(self, message: str) -> None:
+        raise RealityCheckError("agent-steer-failed", "The steering message was not delivered.", "Send it again.")
+
+
+class RefusesSteering(FakeIntelligence):
+    async def start(self, request: AgentRequest) -> FakeRun:
+        run = RefusingRun(request, works_forever, "")
+        self.runs.append(run)
+        return run
+
+
+def record_of(run: lib.CheckRun) -> CheckRecord:
+    return CheckRecord.model_validate_json((run.directory / "check.json").read_text(encoding="utf-8"))
+
+
+def without_fake_resolution(monkeypatch: pytest.MonkeyPatch, script: Script | None = None) -> list[FakeIntelligence]:
+    """Have the agent provider's own implementation be a fake, so the static model check runs as for a real one."""
+    made: list[FakeIntelligence] = []
+
+    def resolve(*arguments: Any) -> FakeIntelligence:
+        made.append(FakeIntelligence(script or finishes()))
+        return made[-1]
+
+    monkeypatch.setattr(interface, "resolve_intelligence", resolve)
+    return made
+
+
+def dead_pid() -> int:
+    process = subprocess.Popen([sys.executable, "-c", "pass"])
+    process.wait()
+    return process.pid
+
+
+async def ended_running(tmp_path: Path, pid: int, pid_started: float | None) -> lib.CheckRun:
+    """A check that ended, then made to look running in the process `pid`, as one whose process died mid-run."""
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=FakeIntelligence(finishes()))
+    await run.result()
+    record = record_of(run).model_copy(
+        update={"status": "running", "ended_at": None, "pid": pid, "pid_started": pid_started}
+    )
+    (run.directory / "check.json").write_text(record.model_dump_json(), encoding="utf-8")
+    return run
+
+
+async def test_started_carries_the_whole_request_and_check_json_the_process_and_the_last_event(
+    tmp_path: Path, workspace: Path
+) -> None:
+    image = workspace / "shot.png"
+    image.write_bytes(b"png")
+    fake = FakeIntelligence(finishes())
+
+    run = await lib.check_software(
+        REQUEST,
+        checks_directory=tmp_path,
+        model="any-model",
+        reasoning_effort="high",
+        images=[image],
+        intelligence=fake,
+    )
+    running = record_of(run)
+    events = await collect(run)
+    ended = record_of(run)
+
+    started = events[0].data
+    assert started["request"] == REQUEST
+    assert (started["model"], started["reasoning_effort"], started["origin"]) == ("any-model", "high", "unknown")
+    assert started["images"] == [str(run.directory / "images" / "shot.png")]
+    assert (started["pid"], started["detached"], started["implementation"]) == (os.getpid(), False, "fake")
+    assert started["agent_request"]["prompt"] == fake.runs[0].request.prompt
+    assert started["agent_request"]["session_directory"] == str(run.directory / "session")
+    assert (running.pid, running.origin) == (os.getpid(), "unknown")
+    assert running.pid_started == process_started(os.getpid())
+    assert running.last_event is not None
+    assert ended.last_event == events[-1].time
+    assert events[-1].time > running.last_event
+
+
+async def test_images_are_copied_into_the_check_and_shown_to_the_agent(tmp_path: Path, workspace: Path) -> None:
+    (workspace / "a").mkdir()
+    for path in (workspace / "shot.png", workspace / "a" / "shot.png"):
+        path.write_bytes(b"png")
+    fake = FakeIntelligence(finishes())
+
+    run = await lib.check_software(
+        REQUEST, checks_directory=tmp_path, images=[Path("shot.png"), Path("a/shot.png")], intelligence=fake
+    )
+    await run.result()
+
+    copied = [run.directory / "images" / "shot.png", run.directory / "images" / "shot-2.png"]
+    assert fake.runs[0].request.images == copied
+    assert record_of(run).images == copied
+    assert all(path.read_bytes() == b"png" for path in copied)
+
+
+@pytest.mark.parametrize(("name", "code"), [("missing.png", "image-not-found"), ("notes.md", "image-not-supported")])
+async def test_an_image_that_is_missing_or_not_an_image_fails_before_the_check(
+    tmp_path: Path, workspace: Path, name: str, code: str
+) -> None:
+    with pytest.raises(RealityCheckError) as failure:
+        await lib.check_software(
+            REQUEST,
+            checks_directory=tmp_path / "checks",
+            images=[Path(name)],
+            intelligence=FakeIntelligence(finishes()),
+        )
+
+    assert failure.value.code == code
+    assert not (tmp_path / "checks").exists()
+
+
+@pytest.mark.parametrize(
+    ("arguments", "code"),
+    [
+        ({"model": "gemini-4-argon"}, "model-not-allowed"),
+        ({"model": "auto", "reasoning_effort": "low"}, "bad-reasoning-effort"),
+        ({"reasoning_effort": "ultra"}, "bad-reasoning-effort"),
+        ({"model": "auto", "images": [Path("shot.png")]}, "model-without-vision"),
+    ],
+)
+async def test_a_model_or_effort_reality_check_does_not_run_fails_before_the_check(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, workspace: Path, arguments: dict[str, Any], code: str
+) -> None:
+    (workspace / "shot.png").write_bytes(b"png")
+    without_fake_resolution(monkeypatch)
+
+    with pytest.raises(RealityCheckError) as failure:
+        await lib.check_software(REQUEST, checks_directory=tmp_path / "checks", agent_provider="copilot", **arguments)
+
+    assert failure.value.code == code
+    assert not (tmp_path / "checks").exists()
+    if code == "model-not-allowed":
+        assert "gpt-6.1-sol" in failure.value.remedy
+        assert "list-intelligence-models" in failure.value.remedy
+
+
+async def test_a_model_that_takes_no_effort_is_sent_none_and_the_default_model_medium(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    made = without_fake_resolution(monkeypatch)
+
+    auto = await lib.check_software(REQUEST, checks_directory=tmp_path, agent_provider="copilot", model="auto")
+    default = await lib.check_software(REQUEST, checks_directory=tmp_path, agent_provider="copilot")
+    await auto.result()
+    await default.result()
+
+    assert [fake.runs[0].request.reasoning_effort for fake in made] == [None, "medium"]
+    assert (record_of(auto).reasoning_effort, record_of(default).reasoning_effort) == (None, "medium")
+
+
+async def test_an_injected_intelligence_runs_any_model(tmp_path: Path) -> None:
+    run = await lib.check_software(
+        REQUEST, checks_directory=tmp_path, model="gemini-4-argon", intelligence=FakeIntelligence(finishes())
+    )
+
+    assert (await run.result()).status == "done"
+
+
+async def test_a_failure_to_start_the_agent_ends_the_check_failed_with_its_code_and_remedy(tmp_path: Path) -> None:
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=Unavailable(finishes()))
+
+    with pytest.raises(RealityCheckError) as failure:
+        await run.result()
+    events = await collect(run)
+
+    assert failure.value.code == "model-not-available"
+    assert (events[-1].kind, events[-1].data["code"], events[-1].data["remedy"]) == (
+        "failed",
+        "model-not-available",
+        "Pick another.",
+    )
+    assert record_of(run).status == "failed"
+
+
+async def test_resume_copies_the_session_into_the_new_check_and_leaves_the_old_one_alone(tmp_path: Path) -> None:
+    first = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=FakeIntelligence(finishes()))
+    await first.result()
+    state = first.directory / "session" / "session-state" / SESSION
+    state.mkdir(parents=True)
+    (state / "events.jsonl").write_text("{}\n", encoding="utf-8")
+    (state / "inuse.lock").write_text("", encoding="utf-8")
+    fake = FakeIntelligence(finishes())
+
+    second = await lib.check_software("Go on.", resume=first.check_id, checks_directory=tmp_path, intelligence=fake)
+    await second.result()
+
+    copy = second.directory / "session" / "session-state" / SESSION
+    assert fake.runs[0].request.session_directory == second.directory / "session"
+    assert (copy / "events.jsonl").read_text(encoding="utf-8") == "{}\n"
+    assert not (copy / "inuse.lock").exists()
+    assert sorted(path.name for path in state.iterdir()) == ["events.jsonl", "inuse.lock"]
+
+
+async def test_resume_of_a_check_that_kept_no_session_leaves_it_to_the_agent_provider(tmp_path: Path) -> None:
+    first = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=FakeIntelligence(finishes()))
+    await first.result()
+    fake = FakeIntelligence(finishes())
+
+    second = await lib.check_software("Go on.", resume=first.check_id, checks_directory=tmp_path, intelligence=fake)
+    await second.result()
+
+    assert fake.runs[0].request.session_directory is None
+    assert not (second.directory / "session").exists()
+
+
+async def test_steering_carries_who_sent_it(tmp_path: Path) -> None:
+    run = await lib.check_software(
+        REQUEST, checks_directory=tmp_path, origin="app", intelligence=FakeIntelligence(waits_for_steering)
+    )
+    other = await lib.check_software(
+        REQUEST, checks_directory=tmp_path, intelligence=FakeIntelligence(waits_for_steering)
+    )
+
+    await run.steer("Use the second account.")
+    lib.steer_check(other.check_id, "Skip settings.", checks_directory=tmp_path, origin="claude-code:abc")
+    steered = [event for event in await collect(run) if event.kind == "steered"]
+    from_file = [event for event in await collect(other) if event.kind == "steered"]
+
+    assert record_of(run).origin == "app"
+    assert [event.data["origin"] for event in steered] == ["app"]
+    assert [(event.text, event.data["origin"]) for event in from_file] == [("Skip settings.", "claude-code:abc")]
+
+
+async def test_a_steering_message_that_is_not_delivered_is_steered_with_its_error(tmp_path: Path) -> None:
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=RefusesSteering(works_forever))
+    await started(run)
+
+    lib.steer_check(run.check_id, "Skip settings.", checks_directory=tmp_path, origin="app")
+    async for event in run.events():
+        if event.kind == "steered":
+            break
+    await run.cancel()
+
+    assert event.text == "Skip settings."
+    assert event.data["code"] == "agent-steer-failed"
+    assert event.data["origin"] == "app"
+    assert "not delivered" in event.data["error"]
+
+
+@pytest.mark.parametrize("reused", [False, True])
+async def test_a_running_check_whose_process_is_gone_has_crashed_and_refuses_steering_and_cancel(
+    tmp_path: Path, reused: bool
+) -> None:
+    # A live process with another start time is a later process given the dead one's pid.
+    pid, started_at = (os.getpid(), (process_started(os.getpid()) or 0) - 1000) if reused else (dead_pid(), 1.0)
+    run = await ended_running(tmp_path, pid, started_at)
+    before = sorted(path.name for path in run.directory.rglob("*"))
+
+    for late in (
+        lambda: lib.steer_check(run.check_id, "too late", checks_directory=tmp_path),
+        lambda: lib.cancel_check(run.check_id, checks_directory=tmp_path),
+    ):
+        with pytest.raises(RealityCheckError) as failure:
+            late()
+        assert failure.value.code == "check-crashed"
+        assert f"process {pid}" in failure.value.message
+        assert f"--resume {run.check_id}" in failure.value.remedy
+    assert sorted(path.name for path in run.directory.rglob("*")) == before
+
+
+async def test_a_crashed_check_resumes_and_a_live_one_refuses_a_second_process(tmp_path: Path) -> None:
+    crashed = await ended_running(tmp_path, dead_pid(), 1.0)
+    live = await ended_running(tmp_path, os.getpid(), process_started(os.getpid()))
+    fake = FakeIntelligence(finishes())
+
+    resumed = await lib.check_software("Go on.", resume=crashed.check_id, checks_directory=tmp_path, intelligence=fake)
+    with pytest.raises(RealityCheckError) as running:
+        await lib.check_software("Go on.", resume=live.check_id, checks_directory=tmp_path, intelligence=fake)
+
+    assert (await resumed.result()).status == "done"
+    assert fake.runs[0].request.resume == SESSION
+    assert running.value.code == "check-running"
+
+
+async def test_detach_with_an_intelligence_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RealityCheckError) as failure:
+        await lib.check_software(
+            REQUEST, checks_directory=tmp_path, detach=True, intelligence=FakeIntelligence(finishes())
+        )
+
+    assert failure.value.code == "detach-with-intelligence"
+
+
+def test_the_cli_passes_images_and_origin_and_prints_tool_lines_without_their_full_content(
+    tmp_path: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    made = without_fake_resolution(monkeypatch)
+    for name in ("one.png", "two.png"):
+        (workspace / name).write_bytes(b"png")
+
+    result = runner.invoke(
+        app,
+        [
+            *("check-software", "--request", REQUEST, "--checks-directory", str(tmp_path / "checks")),
+            *("--image", "one.png", "--image", "two.png", "--origin", "app"),
+        ],
+    )
+
+    lines = [json.loads(line) for line in result.stdout.splitlines()]
+    assert result.exit_code == 0, result.output
+    assert [path.name for path in made[0].runs[0].request.images] == ["one.png", "two.png"]
+    assert lines[0]["data"]["origin"] == "app"
+    tools = [line for line in lines if line["kind"] == "tool"]
+    assert tools
+    assert all("result" not in line["data"] and "arguments" not in line["data"] for line in tools)

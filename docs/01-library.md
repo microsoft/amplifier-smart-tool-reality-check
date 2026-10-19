@@ -18,17 +18,22 @@ async def check_software(
     keep_running: bool = False,       # leave running what this check started, for later checks
     checks_directory: Path = DEFAULT_CHECKS_DIRECTORY,  # where checks are kept; .agents/reality-check, relative to the working directory
     agent_provider: AgentProvider | None = None,  # copilot, amplifier-agent, codex, or claude; when None, the resumed check's, else the first installed, copilot first
-    model: str | None = None,         # the agent provider's default in DEFAULT_INTELLIGENCE_MODELS when None
-    reasoning_effort: ReasoningEffort = DEFAULT_INTELLIGENCE_REASONING_EFFORT,
+    model: str | None = None,         # the agent provider's default in DEFAULT_INTELLIGENCE_MODELS when None; one of INTELLIGENCE_MODELS
+    reasoning_effort: ReasoningEffort | None = None,  # medium when None, and none sent for a model that takes none
     timeout_seconds: int = 3600,
+    images: list[Path] | None = None, # images shown to the agent with the request; copied into the check
+    origin: str = DEFAULT_ORIGIN,     # who starts the check, such as "app" or "claude-code:<session id>"; "unknown" by default
+    detach: bool = False,             # run the check in a process of its own that outlives this one
     intelligence: Intelligence | None = None,
 ) -> CheckRun
 ```
 
+Without an injected `intelligence`, a model not in `INTELLIGENCE_MODELS`, an effort it does not take, or images for a model without vision raise at once, before the check exists. When the agent starts, the agent provider's own client checks the same against the account, so a model the account does not have fails the check instead of running another.
+
 `check_software` returns as soon as the check has started. The `CheckRun` is the handle to it:
 
 ```python
-class CheckRun:
+class CheckRun(Protocol):
     check_id: str
     directory: Path
 
@@ -38,24 +43,29 @@ class CheckRun:
     async def result(self) -> CheckResult           # wait for the end
 ```
 
+`InProcessCheckRun` runs the agent in this process. With `detach`, `DetachedCheckRun` follows a check that runs in a process of its own, started apart from the caller's session and job, through the files it writes; what that process prints goes to `process.log` in the check. A check that cannot start raises the same error either way. `detach` with an `intelligence` raises `detach-with-intelligence`.
+
 Another process can steer or cancel a running check by its `check_id`. The message or the cancel is written to the check's directory and acted on by the process that runs the check. Both are deterministic.
 
 ```python
-def steer_check(check_id: str, message: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> None
+def steer_check(
+    check_id: str, message: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY, origin: str = DEFAULT_ORIGIN
+) -> None
 
 def cancel_check(check_id: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> None
 ```
 
-Both raise `check-not-found`, and `check-not-running` when the check has ended.
+Both raise `check-not-found`, `check-not-running` when the check has ended, and `check-crashed` when its process is gone before it ended. A crashed check is resumed like any other; resuming a check that is still running raises `check-running`.
 
 `CheckEvent` carries the `check_id`, a time, a `kind`, and the text or data for it:
 
 ```
-started     the check began; its check_id and directory
+started     the check began; its check_id, directory, and the whole request: the arguments, the process, and the AgentRequest
 progress    what the agent is doing, in its words
-tool        a tool the agent called, and its result, shortened
+reasoning   what the agent thought, when the model thinks
+tool        a tool the agent called, and its result; text is shortened, data keeps the arguments and result in full
 usage       one model call's tokens, and its cost when the agent provider reports one
-steered     a steering message was delivered
+steered     a steering message was delivered, or `error` says why not; `origin` says who sent it
 finished    the CheckResult
 failed      a RealityCheckError, with its code and remedy
 ```
@@ -85,6 +95,45 @@ CheckResult
 ```
 
 A report that says the software failed is a result, not an exception.
+
+### The check's directory
+
+```
+<checks_directory>/<check_id>/
+  check.json     the CheckRecord: the request, model, status, session_id, pid, last_event, origin, images
+  events.jsonl   every CheckEvent, in full
+  report.md      the agent's final message
+  session/       the agent provider's own state for the session, resumed from a copy by a later check
+  images/        the images the agent was shown
+  steer/, cancel what other processes write for the running check
+  process.log    what a detached check's process printed
+```
+
+## Read check activity
+
+A check's state and its activity, from its files, in any process: what was asked, what the agent said, thought, and did, steering, and how it ended. Deterministic.
+
+```python
+def read_check_activity(
+    check_id: str,
+    after: int | None = None,         # the cursor of an earlier read: only what came after
+    tool_call_id: str | None = None,  # only that tool call and its result, with arguments, result, and detailed_result
+    checks_directory: Path = DEFAULT_CHECKS_DIRECTORY,
+) -> CheckActivity
+```
+
+`CheckActivity` holds the `CheckRecord`, the `state` (`running`, `crashed`, `done`, `cancelled`, or `failed`), the `process_log` path when there is one, the `entries`, and the `cursor` to pass as `after`. Each `ActivityEntry` has a time, a `kind` (`request`, `said`, `reasoning`, `tool`, `tool-result`, `usage`, `steered`, `ended`), its text, the `origin` of a request or steering, and data.
+Raises `check-not-found`, `bad-cursor`, and `tool-call-not-found`.
+
+## List intelligence models
+
+The models a check runs on, `INTELLIGENCE_MODELS` for the installed agent providers, each with its reasoning efforts and whether it can be shown images, and what runs when none is given. Deterministic: it asks no agent provider.
+
+```python
+def list_intelligence_models() -> IntelligenceModels
+```
+
+The list is the models Reality Check supports and recommends, not what an agent provider offers, and changes only with the tool.
 
 ## What the agent gets
 
@@ -133,13 +182,13 @@ class AgentRun(Protocol):
 ```
 
 `preflight` raises `RealityCheckError` naming what to configure when the implementation cannot run.
-`start` starts one agent and returns once it runs. `AgentRequest` holds the prompt, model, optional workspace, optional output schema, the MCP servers and skill directories to add, and `resume`. `AgentResult` holds the agent's final message, the structured output, or the error, and the `session_id`.
+`start` starts one agent and returns once it runs, and may raise `RealityCheckError` for a request its implementation cannot run. `AgentRequest` holds the prompt, model, optional reasoning effort, optional workspace, optional output schema, the MCP servers and skill directories to add, the `images` shown with the prompt, `resume`, and `session_directory`, where the agent provider keeps the session when set. `AgentResult` holds the agent's final message, the structured output, or the error, and the `session_id`.
 With an output schema, the agent answers through a `submit` tool whose parameters are that schema. A missing or invalid submission is sent back to the agent twice at most; after that the result's `error` says why.
 The agent provider's built-in tools are always kept.
 Setting `AgentRequest.resume` to an earlier `AgentResult.session_id` continues that session instead of starting a fresh one, so the agent keeps what it learned. Every implementation resumes across processes.
 `cancel` drains the run so that its session can still be resumed.
 
-`AgentEvent` is one shape for every agent provider: a time, a `kind` (`message`, `tool_call`, `tool_result`, `usage`, `terminal`), and its text or data. Each implementation maps its SDK's own events onto it.
+`AgentEvent` is one shape for every agent provider: a time, a `kind` (`message`, `reasoning`, `tool_call`, `tool_result`, `usage`, `terminal`), and its text or data. Each implementation maps its SDK's own events onto it.
 
 `steer` sends a message to a running agent. How it lands depends on the agent provider, and `steering` says which:
 
@@ -153,7 +202,7 @@ On `codex`, a request runs with full access and no approval prompts.
 
 `resolve_intelligence(agent_provider)` returns a shipped implementation, one per agent provider, each installed through the extra of the same name:
 
-- `copilot`: `CopilotIntelligence`, built on the [GitHub Copilot SDK](https://github.com/github/copilot-sdk) and signed in through the GitHub CLI. A session is resumed with `resume_session`, from the session state the Copilot CLI keeps. MCP servers and skill directories are passed when the session is created or resumed. The `submit` tool is a terminal tool, so a valid call ends the turn. Its `usage` events also carry the SDK's `cost` and `copilot_usage`.
+- `copilot`: `CopilotIntelligence`, built on the [GitHub Copilot SDK](https://github.com/github/copilot-sdk) and signed in through the GitHub CLI. A session is resumed with `resume_session`, from the session state the Copilot CLI keeps, or from `session_directory` passed as `config_directory`. Before a session, the run's own client lists the account's models, and `start` raises `model-not-available`, `bad-reasoning-effort`, or `model-without-vision`. Images are file attachments on the first prompt. MCP servers and skill directories are passed when the session is created or resumed. The `submit` tool is a terminal tool, so a valid call ends the turn. Its `usage` events also carry the SDK's `cost` and `copilot_usage`.
 - `amplifier-agent`: `AmplifierAgentIntelligence`, built on [Amplifier Agent](https://github.com/microsoft/amplifier-agent). The model is `<provider>/<model>`. Sessions live under the platform's per-user state directory, in `reality-check/amplifier-agent`, and are resumed with `resume_session`. MCP servers and skills are set on the agent, which is built for each request.
 - `codex`: `CodexIntelligence`, built on the [OpenAI Codex SDK](https://github.com/openai/codex/tree/main/sdk/python) and run with the user's Codex sign-in and `~/.codex/config.toml`. A session is a Codex thread, resumed with `thread_resume`. MCP servers are passed as config overrides, and skills as skill inputs on the turn.
 - `claude`: `ClaudeIntelligence`, built on the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python) and run with the user's Claude Code settings and the credentials Claude Code resolves: `ANTHROPIC_API_KEY`, or a cloud provider's, as [its docs](https://code.claude.com/docs/en/agent-sdk/quickstart) describe. Sessions are kept where Claude Code keeps them and resumed with the `resume` option; a plain completion runs in the platform's per-user state directory, in `reality-check/claude`. Skill directories are passed as a local plugin.

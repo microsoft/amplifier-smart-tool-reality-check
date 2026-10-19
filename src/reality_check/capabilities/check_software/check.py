@@ -6,15 +6,19 @@ import contextlib
 from datetime import UTC, datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import secrets
 import shutil
 from string import Template
+import subprocess
 import sys
-from typing import Any, Literal
+import threading
+from typing import IO, Any, Literal, Protocol
 
 import platformdirs
+from pydantic import BaseModel
 import yaml
 
 from reality_check.capabilities.check_software.constants import (
@@ -24,14 +28,27 @@ from reality_check.capabilities.check_software.constants import (
     PREVIOUS_CHECKS,
     TARGET_FROM_REQUEST,
 )
+from reality_check.capabilities.check_software.intelligence_models import require_allowed
+from reality_check.capabilities.check_software.record import (
+    EVENTS,
+    PROCESS_LOG,
+    SESSION,
+    alive,
+    check_state,
+    load_record,
+    process_started,
+    read_events,
+    write_record,
+)
 from reality_check.core.skill import DISTRIBUTION, skill_directory
 from reality_check.intelligence.interface import AgentRun, Intelligence, resolve_agent_provider, select_intelligence
-from reality_check.intelligence.schemas import AgentEvent, AgentRequest, AgentResult, HostWorkspace
+from reality_check.intelligence.schemas import IMAGE_MEDIA_TYPES, AgentEvent, AgentRequest, AgentResult, HostWorkspace
 from reality_check.schemas import (
     AGENT_PROVIDERS,
     DEFAULT_CHECKS_DIRECTORY,
     DEFAULT_INTELLIGENCE_MODELS,
     DEFAULT_INTELLIGENCE_REASONING_EFFORT,
+    DEFAULT_ORIGIN,
     AgentProvider,
     AskFirst,
     CheckEvent,
@@ -45,23 +62,84 @@ from reality_check.schemas import (
 )
 
 HERE = Path(__file__).parent
-CHECK_ID_PATTERN = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
 # The skills under the package's `skills/` directory that every check's agent gets.
 CHECKING_SKILLS = ("reaching-software", "using-software", "gathering-evidence")
 DTU_SKILL = "digital-twin-universe"
 DTU_COMMAND = "digital-twin-universe"
 # Skills made at run time, outside the project the agent works in.
 SKILLS_CACHE_DIRECTORY = platformdirs.user_cache_path(DISTRIBUTION, appauthor=False) / "skills"
-# How often the process running a check looks for steering messages and a cancel from other processes.
+# How often the process running a check looks for steering messages and a cancel from other processes, and a
+# detached check's handle for its events.
 POLL_SECONDS = 1.0
 # The agent's own timeout outlasts the check's, so the check is what stops it and the session drains whole.
 AGENT_TIMEOUT_GRACE_SECONDS = 60
 SHORTENED_LENGTH = 500
 MAX_NAMED_FILES = 20
+# What starts a detached check, given its request on stdin. Tests swap it for a command that fakes the agent.
+BACKGROUND_COMMAND = [sys.executable, "-m", "reality_check.capabilities.check_software.background"]
+IMAGES = "images"
+# The parts of the record the `started` event repeats, so the events alone say what was asked and how.
+STARTED_FIELDS = {
+    "request",
+    "target",
+    "resume",
+    "previous_checks",
+    "ask_first",
+    "keep_running",
+    "agent_provider",
+    "model",
+    "reasoning_effort",
+    "origin",
+    "images",
+    "pid",
+    "detached",
+}
 
 
-class CheckRun:
+class CheckRun(Protocol):
     """A running check: its events, a way to talk to its agent, and how it ended."""
+
+    check_id: str
+    directory: Path
+
+    def events(self) -> AsyncIterator[CheckEvent]:
+        """Every event from the start, then live ones until the check ends with `finished` or `failed`."""
+        ...
+
+    async def steer(self, message: str) -> None:
+        """Send a message to the agent while it works; a `steered` event shows when it is delivered."""
+        ...
+
+    async def cancel(self) -> None:
+        """End the check and wait for it to stop; its session can still be resumed."""
+        ...
+
+    async def result(self) -> CheckResult:
+        """Wait for the check to end; raises the RealityCheckError a `failed` event carries."""
+        ...
+
+
+class DetachedCheckRequest(BaseModel):
+    """What `check_software` hands the process a detached check runs in; its paths are resolved."""
+
+    request: str
+    target: str | None
+    resume: str | None
+    previous_checks: list[Path] | None
+    ask_first: AskFirst
+    keep_running: bool
+    checks_directory: Path
+    agent_provider: AgentProvider | None
+    model: str | None
+    # Any string, so one that is not a reasoning effort fails in that process with the same error as in this one.
+    reasoning_effort: str | None
+    timeout_seconds: int
+    images: list[Path] | None
+    origin: str
+
+
+class InProcessCheckRun:
+    """A check whose agent this process runs."""
 
     def __init__(
         self,
@@ -83,10 +161,20 @@ class CheckRun:
         # Replaced on every append, so a reader waits on the one current when it ran out of events.
         self._appended = asyncio.Event()
         self._agent: AgentRun | None = None
-        self._pending: list[str] = []
+        self._agent_started = asyncio.Event()
+        # Steering messages and who sent them, waiting for the agent to run.
+        self._pending: list[tuple[str, str]] = []
         self._cancelling = False
         self._cancel_task: asyncio.Task[None] | None = None
-        self._emit("started", f"Check {self.check_id} started in {directory}.", {"directory": str(directory)})
+        started = {
+            "directory": str(directory),
+            **record.model_dump(mode="json", include=STARTED_FIELDS),
+            "timeout_seconds": timeout_seconds,
+            "checks_directory": str(directory.parent),
+            "implementation": intelligence.implementation,
+            "agent_request": request.model_dump(mode="json", exclude={"output_schema"}),
+        }
+        self._emit("started", f"Check {self.check_id} started in {directory}.", started)
         self._task = asyncio.create_task(self._drive())
 
     def events(self) -> AsyncIterator[CheckEvent]:
@@ -94,13 +182,13 @@ class CheckRun:
         return self._replay()
 
     async def steer(self, message: str) -> None:
-        """Send a message to the agent while it works; a `steered` event shows when it is delivered."""
+        """Send a message to the agent while it works, as from whoever started the check."""
         if self._task.done():
             raise _not_running(self.check_id, self._record.status)
         if self._agent is None or self._pending:
-            self._pending.append(message)
+            self._pending.append((message, self._record.origin))
             return
-        await self._deliver(message)
+        await self._deliver(message, self._record.origin)
 
     async def cancel(self) -> None:
         """End the check and wait for it to stop; its session can still be resumed."""
@@ -110,6 +198,16 @@ class CheckRun:
     async def result(self) -> CheckResult:
         """Wait for the check to end; raises the RealityCheckError a `failed` event carries."""
         return await asyncio.shield(self._task)
+
+    async def running(self) -> None:
+        """Return once the agent runs or the check has ended; raises the RealityCheckError of a check that failed."""
+        started = asyncio.ensure_future(self._agent_started.wait())
+        await asyncio.wait([started, self._task], return_when=asyncio.FIRST_COMPLETED)
+        started.cancel()
+        if self._task.done() and not self._task.cancelled():
+            error = self._task.exception()
+            if isinstance(error, RealityCheckError):
+                raise error
 
     async def _replay(self) -> AsyncIterator[CheckEvent]:
         index = 0
@@ -156,6 +254,7 @@ class CheckRun:
                 async with asyncio.timeout_at(deadline):
                     agent = await self._intelligence.start(self._request)
                     self._agent = agent
+                    self._agent_started.set()
                     self._note_session()
                     forward = asyncio.create_task(self._forward(agent))
                     if self._cancelling:
@@ -187,10 +286,12 @@ class CheckRun:
             return self._finish("cancelled", outcome.session_id, self._report(outcome.text, "it was cancelled"))
         if outcome.error is not None:
             self._end("failed", outcome.session_id)
+            log = self.directory / PROCESS_LOG
+            also = f" and {log} for what its process printed" if log.is_file() else ""
             raise RealityCheckError(
                 code="agent-failed",
                 message=f"The agent running check {self.check_id} failed: {outcome.error}",
-                remedy=f"Read {self.directory / 'events.jsonl'} for what it did; go on with `{self._next}` when its "
+                remedy=f"Read {self.directory / EVENTS} for what it did{also}; go on with `{self._next}` when its "
                 "session was kept, or start the check again.",
             )
         return self._finish("done", outcome.session_id, self._report(outcome.text, "it ended"))
@@ -210,6 +311,8 @@ class CheckRun:
         match event.kind:
             case "message":
                 self._emit("progress", event.text, event.data, event.time)
+            case "reasoning":
+                self._emit("reasoning", event.text, event.data, event.time)
             case "tool_call" | "tool_result":
                 phase = "call" if event.kind == "tool_call" else "result"
                 self._emit("tool", _shorten(event.text), {**event.data, "phase": phase}, event.time)
@@ -225,22 +328,23 @@ class CheckRun:
             self._note_session()
             if (self.directory / "cancel").exists():
                 self._request_cancel()
-            for path in sorted(steer.glob("*.md")):
-                self._pending.append(path.read_text(encoding="utf-8"))
+            for path in sorted(steer.glob("*.json")):
+                note = json.loads(path.read_text(encoding="utf-8"))
+                self._pending.append((note["message"], note.get("origin", DEFAULT_ORIGIN)))
                 path.unlink()
             while self._agent is not None and self._pending and not self._cancelling:
-                message = self._pending.pop(0)
+                message, origin = self._pending.pop(0)
                 try:
-                    await self._deliver(message)
+                    await self._deliver(message, origin)
                 except RealityCheckError as error:
-                    self._emit("progress", f"A steering message was not delivered: {error}", {"code": error.code})
+                    self._emit("steered", message, {"error": str(error), "code": error.code, "origin": origin})
             await asyncio.sleep(POLL_SECONDS)
 
-    async def _deliver(self, message: str) -> None:
+    async def _deliver(self, message: str, origin: str) -> None:
         if self._agent is None:
             raise _not_running(self.check_id, self._record.status)
         await self._agent.steer(message)
-        self._emit("steered", message, {"steering": self._intelligence.steering})
+        self._emit("steered", message, {"steering": self._intelligence.steering, "origin": origin})
 
     def _request_cancel(self) -> None:
         self._cancelling = True
@@ -266,7 +370,7 @@ class CheckRun:
         session_id = self._agent.session_id if self._agent is not None else None
         if session_id is not None and session_id != self._record.session_id:
             self._record = self._record.model_copy(update={"session_id": session_id})
-            _write_record(self.directory, self._record)
+            write_record(self.directory, self._record)
 
     def _result(self, status: CheckStatus, session_id: str | None, report: str) -> CheckResult:
         return CheckResult(
@@ -291,7 +395,7 @@ class CheckRun:
                 "session_id": session_id or self._record.session_id,
             }
         )
-        _write_record(self.directory, self._record)
+        write_record(self.directory, self._record)
 
     def _emit(
         self, kind: CheckEventKind, text: str = "", data: dict[str, Any] | None = None, time: datetime | None = None
@@ -299,11 +403,70 @@ class CheckRun:
         event = CheckEvent(check_id=self.check_id, kind=kind, text=text, data=data or {})
         if time is not None:
             event.time = time
-        with (self.directory / "events.jsonl").open("a", encoding="utf-8") as events:
+        with (self.directory / EVENTS).open("a", encoding="utf-8") as events:
             events.write(json.dumps(event.model_dump(mode="json")) + "\n")
+        # Kept with every event, so a reader of check.json sees the check is still moving.
+        self._record = self._record.model_copy(update={"last_event": event.time})
+        write_record(self.directory, self._record)
         self._events.append(event)
         self._appended.set()
         self._appended = asyncio.Event()
+
+
+class DetachedCheckRun:
+    """A check running in a process of its own, followed through the files that process writes."""
+
+    def __init__(self, check_id: str, directory: Path, origin: str, next_command: str) -> None:
+        self.check_id = check_id
+        self.directory = directory
+        self._origin = origin
+        self._next = next_command
+
+    def events(self) -> AsyncIterator[CheckEvent]:
+        """Every event from the start, then each as the check's process writes it, until the check ends."""
+        return self._follow()
+
+    async def steer(self, message: str) -> None:
+        """Send a message to the agent while it works, as from whoever started the check."""
+        directory = await asyncio.to_thread(_running_check, self.directory.parent, self.check_id)
+        _write_steering(directory, message, self._origin)
+
+    async def cancel(self) -> None:
+        """End the check and wait for it to stop; its session can still be resumed."""
+        # A check that has ended already needs no stopping.
+        with contextlib.suppress(RealityCheckError):
+            directory = await asyncio.to_thread(_running_check, self.directory.parent, self.check_id)
+            (directory / "cancel").touch()
+        async for _ in self._follow():
+            pass
+
+    async def result(self) -> CheckResult:
+        """Wait for the check to end; raises the RealityCheckError a `failed` event carries, or `check-crashed`."""
+        last: CheckEvent | None = None
+        async for event in self._follow():
+            last = event
+        if last is not None and last.kind == "finished":
+            return CheckResult.model_validate(last.data)
+        if last is not None and last.kind == "failed":
+            raise _failure(last.data)
+        record = await asyncio.to_thread(load_record, self.directory.parent, self.check_id)
+        raise _crashed(record, self.directory, self._next)
+
+    async def _follow(self) -> AsyncIterator[CheckEvent]:
+        path = self.directory / EVENTS
+        offset = 0
+        while True:
+            # Looked at before reading, so every event of a check whose process is seen gone is read.
+            record = await asyncio.to_thread(load_record, self.directory.parent, self.check_id)
+            ended = _process_gone(record)
+            events, offset = await asyncio.to_thread(read_events, path, offset)
+            for event in events:
+                yield event
+                if event.kind in ("finished", "failed"):
+                    return
+            if ended:
+                return
+            await asyncio.sleep(POLL_SECONDS)
 
 
 async def check_software(
@@ -316,20 +479,96 @@ async def check_software(
     checks_directory: Path = DEFAULT_CHECKS_DIRECTORY,
     agent_provider: AgentProvider | None = None,
     model: str | None = None,
-    reasoning_effort: ReasoningEffort = DEFAULT_INTELLIGENCE_REASONING_EFFORT,
+    reasoning_effort: ReasoningEffort | None = None,
     timeout_seconds: int = 3600,
+    images: list[Path] | None = None,
+    origin: str = DEFAULT_ORIGIN,
+    detach: bool = False,
     intelligence: Intelligence | None = None,
 ) -> CheckRun:
-    """Start a check and return its handle once it runs; the work goes on in the background."""
+    """Start a check and return its handle once it runs; the work goes on in the background, or in its own process."""
+    if not detach:
+        return await _start(
+            request=request,
+            target=target,
+            resume=resume,
+            previous_checks=previous_checks,
+            ask_first=ask_first,
+            keep_running=keep_running,
+            checks_directory=checks_directory,
+            agent_provider=agent_provider,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            timeout_seconds=timeout_seconds,
+            images=images,
+            origin=origin,
+            intelligence=intelligence,
+            detached=False,
+        )
+    if intelligence is not None:
+        raise RealityCheckError(
+            code="detach-with-intelligence",
+            message="A detached check runs its agent in its own process, which the intelligence passed cannot reach.",
+            remedy="Leave out detach to run the agent with that intelligence here, or leave out the intelligence.",
+        )
+    detached = DetachedCheckRequest(
+        request=request,
+        target=target,
+        resume=resume,
+        previous_checks=[path.resolve() for path in previous_checks] if previous_checks else None,
+        ask_first=ask_first,
+        keep_running=keep_running,
+        checks_directory=checks_directory.resolve(),
+        agent_provider=agent_provider,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        timeout_seconds=timeout_seconds,
+        images=[path.resolve() for path in images] if images else None,
+        origin=origin,
+    )
+    return await _detach(detached)
+
+
+async def start_detached(request: DetachedCheckRequest, intelligence: Intelligence | None) -> InProcessCheckRun:
+    """Start the check a detached request asks for in this process, which is that check's own."""
+    return await _start(**request.model_dump(), intelligence=intelligence, detached=True)
+
+
+async def _start(
+    request: str,
+    target: str | None,
+    resume: str | None,
+    previous_checks: list[Path] | None,
+    ask_first: AskFirst,
+    keep_running: bool,
+    checks_directory: Path,
+    agent_provider: AgentProvider | None,
+    model: str | None,
+    reasoning_effort: ReasoningEffort | None,
+    timeout_seconds: int,
+    images: list[Path] | None,
+    origin: str,
+    intelligence: Intelligence | None,
+    detached: bool,
+) -> InProcessCheckRun:
     root = checks_directory.resolve()
-    resumed = _load_record(root, resume) if resume is not None else None
+    resumed = load_record(root, resume) if resume is not None else None
     if resumed is not None and resumed.session_id is None:
         raise RealityCheckError(
             code="check-not-resumable",
             message=f"Check {resumed.check_id} has no agent session to resume; its status is {resumed.status}.",
             remedy="Resume a check that ended done or cancelled, or start a new check without resume.",
         )
+    if resumed is not None and check_state(resumed) == "running":
+        # Two processes driving one session would each send it turns the other does not know about.
+        raise RealityCheckError(
+            code="check-running",
+            message=f"Check {resumed.check_id} is still running, in process {resumed.pid}.",
+            remedy=f"Steer it with `reality-check steer-check --check-id {resumed.check_id} --message <text>`, cancel "
+            f"it with `reality-check cancel-check --check-id {resumed.check_id}`, or wait for it to end.",
+        )
     previous = _previous_checks(previous_checks or [])
+    sources = _images(images or [])
     if resumed is not None and agent_provider is None:
         agent_provider = resumed.agent_provider
     if resumed is not None and agent_provider != resumed.agent_provider:
@@ -339,13 +578,30 @@ async def check_software(
             remedy=f"Resume it on {resumed.agent_provider} by leaving the agent provider out, or start a new check "
             "without resume.",
         )
-    if intelligence is None:
+    injected = intelligence is not None
+    if not injected:
         agent_provider = resolve_agent_provider(agent_provider)
     provider: AgentProvider = agent_provider or AGENT_PROVIDERS[0]
     intelligence, model = select_intelligence(intelligence, provider, model, DEFAULT_INTELLIGENCE_MODELS)
+    if injected:
+        # An injected implementation chooses its own models.
+        effort = DEFAULT_INTELLIGENCE_REASONING_EFFORT if reasoning_effort is None else reasoning_effort
+    else:
+        effort = require_allowed(provider, model, reasoning_effort, sources)
     intelligence.preflight()
 
     check_id, directory = _new_check_directory(root)
+    copied = _copy_images(directory, sources)
+    session_directory: Path | None = directory / SESSION
+    if resumed is not None:
+        kept = root / resumed.check_id / SESSION
+        if kept.is_dir():
+            # Copied, so each check holds its whole session up to its end and the resumed one is never written to.
+            await asyncio.to_thread(shutil.copytree, kept, directory / SESSION, ignore=shutil.ignore_patterns("*.lock"))
+        else:
+            # A check made before checks kept their session: it is where the agent provider keeps its sessions.
+            session_directory = None
+    pid = os.getpid()
     record = CheckRecord(
         check_id=check_id,
         request=request,
@@ -356,9 +612,14 @@ async def check_software(
         keep_running=keep_running,
         agent_provider=provider,
         model=model,
-        reasoning_effort=reasoning_effort,
+        reasoning_effort=effort,
+        pid=pid,
+        pid_started=process_started(pid),
+        origin=origin,
+        images=copied or None,
+        detached=detached,
     )
-    _write_record(directory, record)
+    write_record(directory, record)
     if resumed is not None:
         prompt = _resume_prompt(request, previous, ask_first, keep_running)
     else:
@@ -367,26 +628,23 @@ async def check_software(
         prompt=prompt,
         model=model,
         workspace=HostWorkspace(path=Path.cwd()),
-        reasoning_effort=reasoning_effort,
+        reasoning_effort=effort,
         timeout_seconds=timeout_seconds + AGENT_TIMEOUT_GRACE_SECONDS,
         resume=resumed.session_id if resumed is not None else None,
         skill_directories=[skill_directory() / "skills", _dtu_skill()],
+        images=copied,
+        session_directory=session_directory,
     )
-    return CheckRun(
+    return InProcessCheckRun(
         record, directory, intelligence, agent_request, timeout_seconds, _next_command(check_id, checks_directory)
     )
 
 
-def steer_check(check_id: str, message: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> None:
+def steer_check(
+    check_id: str, message: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY, origin: str = DEFAULT_ORIGIN
+) -> None:
     """Write a steering message for the process running the check to deliver."""
-    directory = _running_check(checks_directory.resolve(), check_id)
-    steer = directory / "steer"
-    steer.mkdir(exist_ok=True)
-    name = f"{datetime.now(UTC).strftime('%Y%m%d-%H%M%S-%f')}-{secrets.token_hex(3)}"
-    # Written aside and renamed, so the running check never reads half a message.
-    partial = steer / f"{name}.tmp"
-    partial.write_text(message, encoding="utf-8")
-    partial.replace(steer / f"{name}.md")
+    _write_steering(_running_check(checks_directory.resolve(), check_id), message, origin)
 
 
 def cancel_check(check_id: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> None:
@@ -395,9 +653,22 @@ def cancel_check(check_id: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTOR
     (directory / "cancel").touch()
 
 
+def _write_steering(directory: Path, message: str, origin: str) -> None:
+    steer = directory / "steer"
+    steer.mkdir(exist_ok=True)
+    name = f"{datetime.now(UTC).strftime('%Y%m%d-%H%M%S-%f')}-{secrets.token_hex(3)}"
+    # Written aside and renamed, so the running check never reads half a message.
+    partial = steer / f"{name}.tmp"
+    partial.write_text(json.dumps({"message": message, "origin": origin}), encoding="utf-8")
+    partial.replace(steer / f"{name}.json")
+
+
 def _running_check(root: Path, check_id: str) -> Path:
-    record = _load_record(root, check_id)
-    if record.status != "running":
+    record = load_record(root, check_id)
+    state = check_state(record)
+    if state == "crashed":
+        raise _crashed(record, root / check_id, _next_command(check_id, root))
+    if state != "running":
         raise _not_running(check_id, record.status)
     return root / check_id
 
@@ -410,17 +681,128 @@ def _not_running(check_id: str, status: str) -> RealityCheckError:
     )
 
 
-def _load_record(root: Path, check_id: str) -> CheckRecord:
-    path = root / check_id / "check.json"
-    if not CHECK_ID_PATTERN.match(check_id) or not path.is_file():
-        known = sorted(found.parent.name for found in root.glob("*/check.json"))[-5:]
-        raise RealityCheckError(
-            code="check-not-found",
-            message=f"No check {check_id!r} in {root}.",
-            remedy=f"Name a check_id from that directory (the latest: {', '.join(known) or 'none'}), or pass the "
-            "checks directory the check was started with.",
-        )
-    return CheckRecord.model_validate_json(path.read_text(encoding="utf-8"))
+def _crashed(record: CheckRecord, directory: Path, next_command: str) -> RealityCheckError:
+    last = record.last_event.isoformat() if record.last_event is not None else "never"
+    log = directory / PROCESS_LOG
+    read = f"Read {log} for why, then go" if log.is_file() else "Go"
+    return RealityCheckError(
+        code="check-crashed",
+        message=f"Check {record.check_id} is not running: process {record.pid} that ran it is gone; its last event "
+        f"was at {last}.",
+        remedy=f"{read} on with `{next_command}` and the message as its request.",
+    )
+
+
+def _process_gone(record: CheckRecord) -> bool:
+    """Whether the process running the check is gone, so all it wrote is on disk."""
+    if record.pid is None:
+        return record.status != "running"
+    return not alive(record.pid, record.pid_started)
+
+
+def _failure(data: dict[str, Any]) -> RealityCheckError:
+    """The RealityCheckError a `failed` event carries."""
+    if data.get("code") == "check-timeout" and "result" in data:
+        return CheckTimeoutError(data["message"], data["remedy"], CheckResult.model_validate(data["result"]))
+    return RealityCheckError(data["code"], data["message"], data["remedy"])
+
+
+async def _detach(request: DetachedCheckRequest) -> DetachedCheckRun:
+    report = await asyncio.to_thread(_start_process, request)
+    if "code" in report:
+        raise RealityCheckError(report["code"], report["message"], report["remedy"])
+    return DetachedCheckRun(
+        report["check_id"],
+        Path(report["directory"]),
+        request.origin,
+        _next_command(report["check_id"], request.checks_directory),
+    )
+
+
+def _start_process(request: DetachedCheckRequest) -> dict[str, Any]:
+    """Start the process a detached check runs in, and return what it reports once its agent runs or cannot."""
+    process = detached_process(BACKGROUND_COMMAND, subprocess.PIPE, subprocess.PIPE)
+    # It only starts the check's own process and exits; waited on here so it leaves no zombie.
+    threading.Thread(target=process.wait, daemon=True).start()
+    assert process.stdin is not None
+    assert process.stdout is not None
+    with process.stdin:
+        process.stdin.write(request.model_dump_json().encode("utf-8"))
+    with process.stdout:
+        line = process.stdout.readline()
+    if not line:
+        return {
+            "code": "check-start-failed",
+            "message": "The process that runs the check ended before its agent ran, without saying why.",
+            "remedy": "Run the check without detach to see why.",
+        }
+    return json.loads(line)
+
+
+def detached_process(
+    command: list[str], stdin: int | IO[Any], stdout: int | IO[Any], environment: dict[str, str] | None = None
+) -> subprocess.Popen[bytes]:
+    """Start `command` apart from this process's console, session, and job, so ending them leaves it running."""
+    if sys.platform != "win32":
+        return _popen(command, stdin, stdout, environment, start_new_session=True)
+    # A console of its own without a window, which the agent's processes share, so none of them opens one.
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        # Out of the caller's job as well, since a host may end everything in its job when it exits.
+        return _popen(command, stdin, stdout, environment, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB)
+    except PermissionError:
+        # The job allows no breaking away. Hosts built on Node let the children of their children leave it anyway.
+        return _popen(command, stdin, stdout, environment, creationflags=flags)
+
+
+def _popen(
+    command: list[str],
+    stdin: int | IO[Any],
+    stdout: int | IO[Any],
+    environment: dict[str, str] | None,
+    start_new_session: bool = False,
+    creationflags: int = 0,
+) -> subprocess.Popen[bytes]:
+    return subprocess.Popen(
+        command,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=subprocess.DEVNULL,
+        env=environment,
+        start_new_session=start_new_session,
+        creationflags=creationflags,
+    )
+
+
+def _images(paths: list[Path]) -> list[Path]:
+    resolved = [path.resolve() for path in paths]
+    for path in resolved:
+        if not path.is_file():
+            raise RealityCheckError(
+                code="image-not-found",
+                message=f"The image {path} is not a file.",
+                remedy="Name each image file relative to the working directory, or absolute.",
+            )
+        if path.suffix.lower() not in IMAGE_MEDIA_TYPES:
+            raise RealityCheckError(
+                code="image-not-supported",
+                message=f"The image {path} is not one the agent can be shown.",
+                remedy=f"Pass images of these types: {', '.join(IMAGE_MEDIA_TYPES)}.",
+            )
+    return resolved
+
+
+def _copy_images(directory: Path, sources: list[Path]) -> list[Path]:
+    """The images copied into the check, so it keeps what its agent was shown."""
+    copied: list[Path] = []
+    for source in sources:
+        target = directory / IMAGES / source.name
+        if target in copied:
+            target = target.with_name(f"{source.stem}-{len(copied) + 1}{source.suffix}")
+        target.parent.mkdir(exist_ok=True)
+        shutil.copy2(source, target)
+        copied.append(target)
+    return copied
 
 
 def _previous_checks(directories: list[Path]) -> list[Path]:
@@ -448,16 +830,9 @@ def _new_check_directory(root: Path) -> tuple[str, Path]:
         return check_id, directory
 
 
-def _write_record(directory: Path, record: CheckRecord) -> None:
-    # Written aside and renamed, because other processes read it while the check runs.
-    partial = directory / "check.json.tmp"
-    partial.write_text(record.model_dump_json(indent=2), encoding="utf-8")
-    partial.replace(directory / "check.json")
-
-
 def _next_command(check_id: str, checks_directory: Path) -> str:
     command = f'reality-check check-software --resume {check_id} --request "<your answer>"'
-    if checks_directory != DEFAULT_CHECKS_DIRECTORY:
+    if checks_directory.resolve() != DEFAULT_CHECKS_DIRECTORY.resolve():
         command += f" --checks-directory {_quoted(str(checks_directory.resolve()))}"
     return command
 

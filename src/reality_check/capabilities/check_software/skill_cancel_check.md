@@ -22,3 +22,5 @@ cancel_check("20261013-142501-3f9a1c")
 ## Result
 
 Prints nothing and exits 0 once the cancel is written.
+A check whose process is gone, `crashed`, refuses with `check-crashed`; resume it with
+`check-software --resume CHECK_ID` instead.

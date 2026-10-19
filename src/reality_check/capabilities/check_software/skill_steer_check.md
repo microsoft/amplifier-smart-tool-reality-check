@@ -17,8 +17,11 @@ steer_check("20261013-142501-3f9a1c", "Skip the settings pages")
 - `--check-id CHECK_ID`: the check, from its `started` event. Required.
 - `--message TEXT`: what to tell the agent. Required.
 - `--checks-directory PATH`: where the check is kept, default `.agents/reality-check`.
-- Library: `steer_check(check_id, message, checks_directory=Path(".agents/reality-check"))`.
+- `--origin TEXT`: who sends the message, such as `app`; on its `steered` event. Default `unknown`.
+- Library: `steer_check(check_id, message, checks_directory=Path(".agents/reality-check"), origin="unknown")`.
 
 ## Result
 
 Prints nothing and exits 0 once the message is written.
+A check whose process is gone, `crashed`, refuses with `check-crashed`; resume it with
+`check-software --resume CHECK_ID` instead.

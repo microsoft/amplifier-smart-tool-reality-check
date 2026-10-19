@@ -2,24 +2,26 @@
 
 from pathlib import Path
 
-from reality_check.capabilities.check_software import check
+from reality_check.capabilities.check_software import activity, check, intelligence_models
 from reality_check.capabilities.check_software.check import CheckRun
 from reality_check.core import manifest
 from reality_check.core import skill as skill_module
 from reality_check.intelligence.interface import Intelligence
 from reality_check.schemas import (
     DEFAULT_CHECKS_DIRECTORY,
-    DEFAULT_INTELLIGENCE_REASONING_EFFORT,
+    DEFAULT_ORIGIN,
     AgentProvider,
     AskFirst,
+    CheckActivity,
     CheckEvent,
     CheckResult,
     CheckTimeoutError,
+    IntelligenceModels,
     Manifest,
     ReasoningEffort,
 )
 
-__all__ = ["CheckEvent", "CheckResult", "CheckRun", "CheckTimeoutError"]
+__all__ = ["CheckActivity", "CheckEvent", "CheckResult", "CheckRun", "CheckTimeoutError", "IntelligenceModels"]
 
 
 def load_manifest() -> Manifest:
@@ -47,11 +49,17 @@ async def check_software(
     checks_directory: Path = DEFAULT_CHECKS_DIRECTORY,
     agent_provider: AgentProvider | None = None,
     model: str | None = None,
-    reasoning_effort: ReasoningEffort = DEFAULT_INTELLIGENCE_REASONING_EFFORT,
+    reasoning_effort: ReasoningEffort | None = None,
     timeout_seconds: int = 3600,
+    images: list[Path] | None = None,
+    origin: str = DEFAULT_ORIGIN,
+    detach: bool = False,
     intelligence: Intelligence | None = None,
 ) -> CheckRun:
-    """Start a check of software as a user uses it, returning its handle as soon as it runs. Model-backed."""
+    """Start a check of software as a user uses it, returning its handle as soon as it runs. Model-backed.
+
+    With `detach`, the check runs in a process of its own that outlives this one.
+    """
     return await check.check_software(
         request=request,
         target=target,
@@ -64,18 +72,40 @@ async def check_software(
         model=model,
         reasoning_effort=reasoning_effort,
         timeout_seconds=timeout_seconds,
+        images=images,
+        origin=origin,
+        detach=detach,
         intelligence=intelligence,
     )
 
 
-def steer_check(check_id: str, message: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> None:
+def steer_check(
+    check_id: str, message: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY, origin: str = DEFAULT_ORIGIN
+) -> None:
     """Send a message to a running check's agent, from any process; the check's events show when it lands."""
-    check.steer_check(check_id=check_id, message=message, checks_directory=checks_directory)
+    check.steer_check(check_id=check_id, message=message, checks_directory=checks_directory, origin=origin)
 
 
 def cancel_check(check_id: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> None:
     """Cancel a running check, from any process; its session can still be resumed."""
     check.cancel_check(check_id=check_id, checks_directory=checks_directory)
+
+
+def read_check_activity(
+    check_id: str,
+    after: int | None = None,
+    tool_call_id: str | None = None,
+    checks_directory: Path = DEFAULT_CHECKS_DIRECTORY,
+) -> CheckActivity:
+    """A check as it stands and what its agent said, thought, and did, from any process; `after` reads on from a cursor."""
+    return activity.read_check_activity(
+        check_id=check_id, after=after, tool_call_id=tool_call_id, checks_directory=checks_directory
+    )
+
+
+def list_intelligence_models() -> IntelligenceModels:
+    """The models a check runs on, each with its reasoning efforts, and what runs when given none."""
+    return intelligence_models.list_intelligence_models()
 
 
 def reaching_software_skill() -> str:
