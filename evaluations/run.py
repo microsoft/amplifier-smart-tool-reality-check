@@ -135,6 +135,7 @@ def run(
                     "score": record.score,
                     "capability_seconds": record.capability_seconds,
                     "aiu": record.usage.get("capability", {}).get("aiu"),
+                    "usd": record.usage.get("capability", {}).get("usd"),
                     "error": record.error,
                 }
             )

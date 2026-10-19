@@ -2,6 +2,9 @@
 
 from collections.abc import AsyncIterator
 from importlib.util import find_spec
+import os
+from pathlib import Path
+import sys
 from typing import Protocol
 
 from reality_check.core.skill import DISTRIBUTION, repository_url
@@ -133,13 +136,15 @@ def select_intelligence(
     return intelligence, default_models[agent_provider or AGENT_PROVIDERS[0]] if model is None else model
 
 
-def unsupported(agent_provider: AgentProvider) -> RealityCheckError:
-    """The failure of an agent provider whose implementation refuses every run."""
-    return RealityCheckError(
-        code="agent-provider-unsupported",
-        message=f"Checks run only on the copilot agent provider, and {agent_provider} was asked for.",
-        remedy='Pass agent_provider="copilot" to the library, or --agent-provider copilot on the command line.',
-    )
+def state_directory(agent_provider: AgentProvider) -> Path:
+    """The platform's per-user state location for the agent provider, where what a later run resumes lives."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+    return base / DISTRIBUTION / agent_provider
 
 
 def _install_source(extra: str) -> str:

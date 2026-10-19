@@ -11,7 +11,7 @@ MAX_INVALID_SUBMISSIONS = 2
 def submission_problem(submitted: dict[str, Any] | None, schema: dict[str, Any]) -> str | None:
     """Why the submission is not acceptable, or None when it is."""
     if submitted is None:
-        return f"the {SUBMIT_TOOL} tool was never called"
+        return "no answer was submitted"
     try:
         jsonschema.validate(submitted, schema)
     except jsonschema.ValidationError as error:
@@ -21,6 +21,4 @@ def submission_problem(submitted: dict[str, Any] | None, schema: dict[str, Any])
 
 def resubmit_prompt(problem: str) -> str:
     """What the agent is told when its turn ended without an acceptable submission."""
-    return (
-        f"Your answer was not accepted: {problem}. Call the {SUBMIT_TOOL} tool now with an answer matching its schema."
-    )
+    return f"Your answer was not accepted: {problem}. Submit your answer again, matching its schema."

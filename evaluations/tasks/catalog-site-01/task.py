@@ -51,9 +51,7 @@ def run(context: RunContext) -> None:
         with context.step("collect"):
             collect.standard(env, context, result, baseline)
         with context.step("judge"):
-            judge.grade(
-                env, context, request=REQUEST, expected=TASK / "expected.md", rubric=RUBRIC, result=result
-            )
+            judge.grade(env, context, request=REQUEST, expected=TASK / "expected.md", rubric=RUBRIC, result=result)
 
 
 def _build_image(context: RunContext) -> None:

@@ -1,9 +1,9 @@
 [project]
 name = "reality-check"
-version = "0.2.0"
+version = "0.3.0"
 description = "Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.15"
 dependencies = [
     "digital-twin-universe @ git+https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe@8435e711eff63d533475861962f267b91fc5917a",
     "jsonschema>=4.26.0,<5.0.0",
@@ -25,13 +25,13 @@ copilot = [
     "github-copilot-sdk>=1.0.21,<2.0.0",
 ]
 amplifier-agent = [
-    "amplifier-agent @ git+https://github.com/microsoft/amplifier-agent@v0.22.0#subdirectory=packages/python",
+    "amplifier-agent @ git+https://github.com/microsoft/amplifier-agent@v0.23.1#subdirectory=packages/python",
 ]
 codex = [
-    "openai-codex>=0.159.2,<1.0.0",
+    "openai-codex>=0.162.1,<1.0.0",
 ]
 claude = [
-    "claude-agent-sdk>=0.2.163,<0.3.0",
+    "claude-agent-sdk>=0.2.167,<0.3.0",
 ]
 all = [
     "reality-check[copilot,amplifier-agent,codex,claude]",

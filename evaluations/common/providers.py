@@ -28,6 +28,13 @@ GH_INSTALL = """sudo mkdir -p -m 755 /etc/apt/keyrings \
 https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
 && sudo apt-get update -qq && sudo apt-get install -y -qq gh"""
 
+# What `codex login --with-api-key` writes, without needing the Codex CLI before reality-check brings its runtime.
+CODEX_LOGIN = """python3 -c 'import json, os, pathlib
+home = pathlib.Path.home() / ".codex"
+home.mkdir(exist_ok=True)
+(home / "auth.json").write_text(json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"]}))
+(home / "auth.json").chmod(0o600)'"""
+
 PROVIDERS: dict[AgentProvider, Provider] = {
     "copilot": Provider(
         extra="copilot",
@@ -35,6 +42,27 @@ PROVIDERS: dict[AgentProvider, Provider] = {
         setup=GH_INSTALL,
         sessions="~/.copilot/session-state",
         logs=("~/.copilot/logs",),
+    ),
+    "amplifier-agent": Provider(
+        extra="amplifier-agent",
+        credentials=("OPENAI_API_KEY",),
+        setup="true",
+        sessions="~/.local/state/reality-check/amplifier-agent/sessions/sessions",
+        logs=(),
+    ),
+    "codex": Provider(
+        extra="codex",
+        credentials=("OPENAI_API_KEY",),
+        setup=CODEX_LOGIN,
+        sessions="~/.codex/sessions",
+        logs=("~/.codex/log",),
+    ),
+    "claude": Provider(
+        extra="claude",
+        credentials=("ANTHROPIC_API_KEY",),
+        setup="true",
+        sessions="~/.claude/projects",
+        logs=(),
     ),
 }
 

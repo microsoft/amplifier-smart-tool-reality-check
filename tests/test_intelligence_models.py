@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 from reality_check import lib
 from reality_check.capabilities.check_software.intelligence_models import require_allowed
 from reality_check.cli import app
-from reality_check.schemas import ALL_EFFORTS, INTELLIGENCE_MODELS, RealityCheckError
+from reality_check.schemas import ALL_EFFORTS, INTELLIGENCE_MODELS, AgentProvider, RealityCheckError
 
 runner = CliRunner()
 
@@ -58,3 +58,24 @@ def test_the_cli_prints_the_list_as_json() -> None:
 
     assert result.exit_code == 0
     assert json.loads(result.stdout) == lib.list_intelligence_models().model_dump(mode="json")
+
+
+@pytest.mark.parametrize(
+    ("agent_provider", "model", "expected"),
+    [
+        ("amplifier-agent", "openai/gpt-6.1-sol", "medium"),
+        ("amplifier-agent", "gpt-6.1-sol", "model-not-allowed"),
+        ("codex", "gpt-6.1-sol", "medium"),
+        ("claude", "claude-sonnet-5-5", "medium"),
+        ("claude", "claude-sonnet-5.5", "model-not-allowed"),
+    ],
+)
+def test_every_agent_provider_runs_only_its_listed_models(
+    agent_provider: AgentProvider, model: str, expected: str
+) -> None:
+    if expected in ALL_EFFORTS:
+        assert require_allowed(agent_provider, model, None, []) == expected
+        return
+    with pytest.raises(RealityCheckError) as failure:
+        require_allowed(agent_provider, model, None, [])
+    assert failure.value.code == expected

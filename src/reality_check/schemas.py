@@ -119,6 +119,57 @@ INTELLIGENCE_MODELS: tuple[IntelligenceModel, ...] = (
         vision=True,
     ),
     IntelligenceModel(agent_provider="copilot", id="auto", label="Auto", reasoning_efforts=[], vision=False),
+    IntelligenceModel(
+        agent_provider="amplifier-agent",
+        id="openai/gpt-6.1-sol",
+        label="GPT-6.1 Sol",
+        reasoning_efforts=ALL_EFFORTS,
+        vision=True,
+    ),
+    IntelligenceModel(
+        agent_provider="amplifier-agent",
+        id="openai/gpt-6-astra",
+        label="GPT-6 Astra",
+        reasoning_efforts=ALL_EFFORTS,
+        vision=True,
+    ),
+    IntelligenceModel(
+        agent_provider="amplifier-agent",
+        id="anthropic/claude-sonnet-5-5",
+        label="Claude Sonnet 5.5",
+        reasoning_efforts=ALL_EFFORTS,
+        vision=True,
+    ),
+    IntelligenceModel(
+        agent_provider="amplifier-agent",
+        id="anthropic/claude-opus-5-5",
+        label="Claude Opus 5.5",
+        reasoning_efforts=ALL_EFFORTS,
+        vision=True,
+    ),
+    IntelligenceModel(
+        agent_provider="codex", id="gpt-6.1-sol", label="GPT-6.1 Sol", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="codex", id="gpt-6-astra", label="GPT-6 Astra", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="codex", id="gpt-6-luna", label="GPT-6 Luna", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="claude",
+        id="claude-sonnet-5-5",
+        label="Claude Sonnet 5.5",
+        reasoning_efforts=ALL_EFFORTS,
+        vision=True,
+    ),
+    IntelligenceModel(
+        agent_provider="claude",
+        id="claude-opus-5-5",
+        label="Claude Opus 5.5",
+        reasoning_efforts=ALL_EFFORTS,
+        vision=True,
+    ),
 )
 
 

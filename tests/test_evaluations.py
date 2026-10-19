@@ -116,6 +116,17 @@ def test_usage_sums_tokens_and_the_provider_s_cost_by_model() -> None:
     assert summary["by_model"]["a"]["multiplier"] == 1.0
 
 
+def test_usage_sums_a_cost_reported_in_dollars() -> None:
+    def call(dollars: float) -> dict:
+        return {"kind": "usage", "data": {"model": "m", "input_tokens": 5, "cost": {"USD": dollars}}}
+
+    summary = usage.summarize([call(0.25), call(0.5)])
+
+    assert summary["usd"] == 0.75
+    assert summary["by_model"]["m"]["usd"] == 0.75
+    assert "multiplier" not in summary["by_model"]["m"]
+
+
 def _spec(task: str, repeat: int) -> RunSpec:
     return RunSpec(
         task=task,

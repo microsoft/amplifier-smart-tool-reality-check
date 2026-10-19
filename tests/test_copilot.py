@@ -205,6 +205,7 @@ async def test_a_session_gets_the_workspace_mcp_servers_and_skills_and_keeps_the
     assert options["working_directory"] == str(tmp_path)
     assert options["on_permission_request"] is PermissionHandler.approve_all
     assert options["skip_custom_instructions"] is True
+    assert options["enable_session_telemetry"] is False
     assert options["skill_directories"] == [str(tmp_path / "skills")]
     assert options["mcp_servers"] == {
         "dtu": {
@@ -372,7 +373,7 @@ async def test_no_valid_submission_after_the_retries_is_the_result_s_error(world
     result = await (await CopilotIntelligence().start(request(output_schema=SCHEMA))).result()
 
     assert result.output is None
-    assert result.error == "No valid submission after 2 retries: the submit tool was never called"
+    assert result.error == "No valid submission after 2 retries: no answer was submitted"
     assert len(fake.sends) == 3
 
 
