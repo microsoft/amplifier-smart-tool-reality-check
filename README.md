@@ -33,8 +33,8 @@ Prerequisites:
 
    > Click through every settings page and list where the spacing, icons, or wording are not consistent.
 
-1.  A report that says what was checked, what passed, and what failed, with screenshots and other evidence for each finding.
-Your agent reads it and suggests what to do next. Ask it before it makes changes. Each check is saved in `.agents/reality-check` by default, so you can come back to it later:
+1. Get back a report that says what was checked, what passed, and what failed, with screenshots and other evidence for each finding.
+   Your agent reads it and suggests what to do next. Ask it before it makes changes. Each check is saved in `.agents/reality-check` by default, so you can come back to it later.
 
 ## Command line
 
