@@ -50,7 +50,7 @@ module-name = "reality_check"
 add-bounds = "major"
 default-groups = "all"
 exclude-newer = "5 days"
-# certifi is the CA bundle, so its fixes for compromised roots are taken as soon as they ship.
+# Remove once the certifi release that exclude-newer allows has no known CVE.
 exclude-newer-package = { certifi = false }
 
 [dependency-groups]
