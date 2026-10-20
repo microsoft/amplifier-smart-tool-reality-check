@@ -21,6 +21,7 @@ from reality_check.core.skill import DISTRIBUTION
 from reality_check.schemas import (
     DEFAULT_CHECKS_DIRECTORY,
     DEFAULT_ORIGIN,
+    DEFAULT_TIMEOUT_SECONDS,
     AgentProvider,
     AskFirst,
     CheckEvent,
@@ -152,9 +153,11 @@ def check_software(
     ] = None,
     model: Annotated[str | None, typer.Option("--model", help="The agent provider's default when omitted.")] = None,
     reasoning_effort: Annotated[
-        ReasoningEffort | None, typer.Option("--reasoning-effort", help="medium, or none for a model that takes none.")
+        ReasoningEffort | None, typer.Option("--reasoning-effort", help="high, or none for a model that takes none.")
     ] = None,
-    timeout_seconds: Annotated[int, typer.Option("--timeout-seconds", min=1)] = 3600,
+    timeout_seconds: Annotated[
+        int, typer.Option("--timeout-seconds", min=0, help="How long the check may run; 0 for no limit.")
+    ] = DEFAULT_TIMEOUT_SECONDS,
     images: Annotated[
         list[Path] | None, typer.Option("--image", help="An image shown to the agent with the request; repeatable.")
     ] = None,
@@ -177,7 +180,7 @@ def check_software(
                 agent_provider=agent_provider,
                 model=model,
                 reasoning_effort=reasoning_effort,
-                timeout_seconds=timeout_seconds,
+                timeout_seconds=timeout_seconds or None,
                 images=images,
                 origin=origin,
                 detach=detach,
@@ -239,6 +242,12 @@ def list_intelligence_models() -> None:
 
 
 @app.command()
+def install_computer_use() -> None:
+    """Install, once, the cua-driver checks drive desktop apps with, and print it as JSON. Deterministic."""
+    typer.echo(lib.install_computer_use().model_dump_json(indent=2))
+
+
+@app.command()
 def reaching_software_skill() -> None:
     """Print the skill for reaching software where it runs. Deterministic."""
     typer.echo(lib.reaching_software_skill())
@@ -248,6 +257,12 @@ def reaching_software_skill() -> None:
 def using_software_skill() -> None:
     """Print the skill for seeing and using software as a user. Deterministic."""
     typer.echo(lib.using_software_skill())
+
+
+@app.command()
+def using_computer_use_skill() -> None:
+    """Print the skill for driving a desktop app's real UI through cua-driver. Deterministic."""
+    typer.echo(lib.using_computer_use_skill())
 
 
 @app.command()

@@ -34,6 +34,13 @@ class EventLog:
             await appended.wait()
 
 
+def fresh_input(input_tokens: int | None, *cached: int | None) -> int | None:
+    """Input tokens neither read from nor written to a cache, from a count that includes the cached ones."""
+    if input_tokens is None:
+        return None
+    return max(0, input_tokens - sum(tokens or 0 for tokens in cached))
+
+
 def shorten(text: str, limit: int = SHORTENED_LENGTH) -> str:
     """The text cut to `limit` characters, marked when cut, so an event stays readable."""
     return text if len(text) <= limit else f"{text[:limit]}... [{len(text) - limit} more characters]"

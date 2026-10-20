@@ -59,7 +59,10 @@ def collect(config_path: Path) -> None:
     if check and Path(check).is_dir():
         shutil.copytree(check, out / "check", symlinks=True, ignore=IGNORED_IN_COPIES)
         session_id = json.loads((Path(check) / "check.json").read_text(encoding="utf-8")).get("session_id")
-        session = Path(config["sessions"]) / str(session_id)
+        # A check keeps its session in its record; one resumed from a check made before that leaves it where the
+        # agent provider keeps its sessions.
+        kept = Path(check) / "session"
+        session = kept if kept.is_dir() else Path(config["sessions"]) / str(session_id)
         if session_id and session.is_dir():
             shutil.copytree(session, out / "session", symlinks=True, ignore=IGNORED_IN_COPIES)
     for logs in config.get("logs", []):

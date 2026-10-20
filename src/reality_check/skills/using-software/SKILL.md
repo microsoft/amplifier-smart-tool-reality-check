@@ -17,8 +17,15 @@ directly is not using the app; do it only to explain what you saw.
   `chromium.connect_over_cdp(url)`. A browser extension or bridge the caller named is another way.
 - Web app, nothing open: Playwright or a headless browser on this machine, or a browser in a
   universe next to the app.
-- Desktop or anything with no automation hook: computer use, when the harness has it. If it is
-  not enabled, say so instead of guessing.
+- Desktop and native apps: computer use through cua-driver, with the using-computer-use skill.
+  Use it when nothing else reaches the app, and also when what does reach it would not show what
+  a user experiences. If it is not enabled, say so instead of guessing. For example:
+  - An Electron or other desktop app built on web content: Playwright against its dev server
+    misses the native window, menus, file dialogs, and tray.
+  - A UI test hook or API that sets state directly: it passes where a user's clicks would not.
+  - Canvas, game, or custom-drawn UIs: the DOM or tree says nothing about what is drawn.
+  - OS-level steps a user goes through: file pickers, permission and sign-in prompts, installers,
+    notifications.
 - CLI: run it in a terminal as the user would, with their kind of shell and working directory,
   in a universe when it must not touch this machine (`digital-twin-universe exec`).
 - Native or mobile: the platform's tester or simulator (Xcode `simctl`, Android `adb` and an

@@ -1,0 +1,38 @@
+# A developer's Linux desktop with GitHub Desktop and a repository in progress, this checkout installable as if
+# released, and a Docker daemon of its own, so every universe launched in it lives inside it.
+name: reality-check-evaluation-desktop-app-02
+
+x-dtu:
+  description: A developer's Linux desktop with GitHub Desktop, where reality-check is installed and evaluated
+  twin_machine: twin
+  repositories:
+    - path: ../../../..
+      url: https://github.com/microsoft/amplifier-smart-tool-reality-check
+
+services:
+  twin:
+    build:
+      context: ../../../github-desktop
+      args:
+        SEED_BUG: "0"
+    # A nested daemon has no unprivileged path. This weakens the container boundary, and is this profile's
+    # decision to make: the twin runs only what an evaluation runs.
+    privileged: true
+    # The desktop session runs as the user, in the twin, so computer use shares its display, bus, and processes.
+    command: [sh, -c, "start-desktop && exec sudo dind dockerd --host=unix:///var/run/docker.sock"]
+    # Already a mount, so dind does not mount a fresh /tmp over the desktop's sockets.
+    tmpfs: [/tmp]
+    # Chromium and Electron crash with Docker's default 64 MB of shared memory.
+    shm_size: 2gb
+    environment:
+      GH_TOKEN: ${GH_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Every command run in the twin reaches the user's desktop session.
+      DISPLAY: ":99"
+      XDG_RUNTIME_DIR: /tmp/runtime-user
+      DBUS_SESSION_BUS_ADDRESS: unix:path=/tmp/runtime-user/bus
+    healthcheck:
+      test: [CMD, docker, info]
+      interval: 3s
+      start_period: 60s

@@ -29,8 +29,9 @@ activity.state, [entry.kind for entry in activity.entries], activity.cursor
 
 JSON with:
 
-- `check`: the check's `check.json`, such as its request, model, `origin`, `pid`, and `last_event`.
-- `state`: `running`, `done`, `cancelled`, `failed`, or `crashed`, a check whose process is gone
+- `check`: the check's `check.json`, such as its request, model, `origin`, `pid`, `last_event`,
+  `timeout_seconds`, and `usage` so far.
+- `state`: `running`, `done`, `cancelled`, `timed-out`, `failed`, or `crashed`, a check whose process is gone
   before it ended. A crashed check is resumed with `check-software --resume CHECK_ID`.
 - `process_log`: what a detached check's process printed, when there is one; read it after a crash.
 - `entries`: each with `time`, `kind`, `text`, `origin` (for `request` and `steered`), and `data`.

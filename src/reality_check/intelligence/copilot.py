@@ -25,6 +25,7 @@ from copilot.session import Attachment
 from copilot.session_events import (
     AssistantMessageData,
     AssistantReasoningData,
+    AssistantUsageCopilotUsage,
     AssistantUsageData,
     SessionErrorData,
     SessionEvent,
@@ -34,7 +35,7 @@ from copilot.session_events import (
     ToolExecutionStartData,
 )
 
-from reality_check.intelligence.events import EventLog, shorten
+from reality_check.intelligence.events import EventLog, fresh_input, shorten
 from reality_check.intelligence.schemas import (
     AgentEvent,
     AgentEventKind,
@@ -53,6 +54,7 @@ from reality_check.schemas import ALL_EFFORTS, RealityCheckError
 
 # How long an aborted turn may take to go idle before the run stops waiting for it.
 DRAIN_SECONDS = 30
+NANO = 1e9
 
 
 class CopilotRun:
@@ -290,12 +292,16 @@ class CopilotRun:
                 usage = {
                     "model": data.model,
                     "input_tokens": data.input_tokens,
+                    "fresh_input_tokens": fresh_input(
+                        data.input_tokens, data.cache_read_tokens, data.cache_write_tokens
+                    ),
                     "output_tokens": data.output_tokens,
                     "cache_read_tokens": data.cache_read_tokens,
                     "cache_write_tokens": data.cache_write_tokens,
                     "reasoning_tokens": data.reasoning_tokens,
                     "cost": data.cost,
                     "copilot_usage": data.copilot_usage.to_dict() if data.copilot_usage is not None else None,
+                    "billing": _billing(data.copilot_usage),
                 }
                 self._emit("usage", "", {**usage, **agent}, event)
             case SessionIdleData() as data if root and data.mode != SessionMode.AUTOPILOT:
@@ -396,6 +402,11 @@ def copilot_model_problem(models: list[ModelInfo], request: AgentRequest) -> Rea
             remedy="Pick a model that can, from `reality-check list-intelligence-models`, or leave the images out.",
         )
     return None
+
+
+def _billing(usage: AssistantUsageCopilotUsage | None) -> dict[str, float]:
+    """What Copilot bills for the call, in AIU."""
+    return {} if usage is None else {"AIU": usage.total_nano_aiu / NANO}
 
 
 def mcp_server_config(server: McpServer) -> MCPServerConfig:

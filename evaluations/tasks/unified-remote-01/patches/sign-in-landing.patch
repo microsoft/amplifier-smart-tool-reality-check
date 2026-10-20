@@ -1,0 +1,26 @@
+diff --git a/amplifier_web/auth.py b/amplifier_web/auth.py
+index b9879f3..8fba6a3 100644
+--- a/amplifier_web/auth.py
++++ b/amplifier_web/auth.py
+@@ -79,6 +79,12 @@ def validate_next_path(value: str | None) -> str:
+     return value
+ 
+ 
++def landing_url(request: web.Request, next_path: str | None) -> str:
++    """Absolute address of the app on this host's own listener, where a completed sign-in lands."""
++    scheme = "https" if request.secure else "http"
++    return f"{scheme}://127.0.0.1:{request.app['server_config']['port']}{validate_next_path(next_path)}"
++
++
+ def login_url(next_path: str | None) -> str:
+     target = validate_next_path(next_path)
+     return "/login" if target == "/" else "/login?next=" + quote(target, safe="")
+@@ -247,7 +253,7 @@ async def post_login(request: web.Request) -> web.Response:
+     if not authenticate_pam(str(form.get("username", "")), str(form.get("password", ""))):
+         url = login_url(request.query.get("next"))
+         raise web.HTTPSeeOther(url + ("&" if "?" in url else "?") + "error=1")
+-    response = web.HTTPSeeOther(validate_next_path(request.query.get("next")))
++    response = web.HTTPSeeOther(landing_url(request, request.query.get("next")))
+     response.set_cookie(SESSION_COOKIE, new_session(request.app["session_secret"]), max_age=request.app["server_config"]["session_ttl_seconds"],
+                         httponly=True, samesite="Strict", secure=request.secure, path="/")
+     response.del_cookie(CSRF_COOKIE, path="/")

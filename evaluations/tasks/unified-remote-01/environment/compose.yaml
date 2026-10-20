@@ -1,0 +1,75 @@
+# A developer's machine with this checkout installable as if released, and a Docker daemon of its own, so every
+# universe launched in it lives inside it.
+name: reality-check-evaluation-unified-remote-01
+
+x-dtu:
+  description: A developer's Linux machine with a nested Docker daemon, where reality-check is installed and evaluated
+  twin_machine: twin
+  repositories:
+    - path: ../../../..
+      url: https://github.com/microsoft/amplifier-smart-tool-reality-check
+
+services:
+  twin:
+    build:
+      context: ../../../environment
+    # A nested daemon has no unprivileged path. This weakens the container boundary, and is this profile's
+    # decision to make: the twin runs only what an evaluation runs.
+    privileged: true
+    # Containers on the nested daemon cannot reach Docker's embedded DNS at 127.0.0.11, so they look names up at
+    # the router, as containers on a home LAN do. The embedded DNS of a user-defined network does not forward a
+    # single-label name, so the search domain and ndots, as a LAN host's resolv.conf has them, make a container
+    # ask for home-server-2.lan first.
+    command:
+      - sh
+      - -c
+      - exec sudo dind dockerd --host=unix:///var/run/docker.sock --dns "`getent ahostsv4 router | head -n 1 | cut -d ' ' -f 1`" --dns-search lan --dns-opt ndots:1
+    depends_on:
+      router:
+        condition: service_healthy
+    # Chromium crashes with Docker's default 64 MB of shared memory.
+    shm_size: 2gb
+    environment:
+      GH_TOKEN: ${GH_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    healthcheck:
+      test: [CMD, docker, info]
+      interval: 3s
+      start_period: 60s
+
+  # The user's home server, reached from the twin at https://home-server-2:8941 and over SSH. The image is built on
+  # the host first.
+  home-server-2:
+    image: home-server-2:eval
+    pull_policy: never
+    hostname: home-server-2
+    # For the task to connect Unified to OpenAI at placement, as its owner did in Settings, AI connections. Only the
+    # placement command reads it; Unified's service never sees the container's environment.
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    # systemd runs as init, as on the machine this stands for, and needs a cgroup tree it can write.
+    privileged: true
+    cgroup: private
+    tmpfs: [/run, /run/lock]
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - --noproxy
+        - "*"
+        - --cacert
+        - /home/user/.amplifier-unified/config/tls/ca.crt
+        - https://home-server-2:8941/api/health
+      interval: 3s
+      start_period: 120s
+
+  # The LAN's router, which answers DNS for the machines on the network, under `lan` too, and forwards the rest.
+  # Built on the host first.
+  router:
+    image: lan-router:eval
+    pull_policy: never
+    healthcheck:
+      test: [CMD, nslookup, home-server-2, 127.0.0.1]
+      interval: 2s

@@ -19,6 +19,26 @@ ASK_FIRST: dict[AskFirst, str] = {
     ),
 }
 
+# $computer_use in prompt.md and resume-prompt.md. Each states a fact; $ask_first decides what the agent does about it.
+COMPUTER_USE_ENABLED = Template("Computer use is enabled through the CLI `$command`; see the using-computer-use skill.")
+NO_ACCESSIBILITY_TREE = Template(
+    "This desktop gives no accessibility tree, so work from screenshots; `$command doctor` says why."
+)
+COMPUTER_USE_NOT_INSTALLED = Template(
+    "Computer use is not installed yet. When the software needs its desktop UI driven, install it with `$install`: "
+    "it asks nothing and changes nothing outside reality-check's own folder. Within a few seconds of it succeeding, "
+    "computer use is enabled through the CLI `$command` (`$command status` says when it runs); see the "
+    "using-computer-use skill. If the install fails, computer use is not enabled, and the install's error says why."
+)
+COMPUTER_USE_OFF = Template(
+    "Computer use is not enabled: $reason To enable it: $remedy This matters only for software that needs its "
+    "desktop UI driven."
+)
+COMPUTER_USE_UNSUPPORTED = Template(
+    "Computer use is not enabled: $reason It cannot be enabled on this machine. This matters only for software that "
+    "needs its desktop UI driven."
+)
+
 # $keep_running in prompt.md and resume-prompt.md
 KEEP_RUNNING: dict[bool, str] = {
     False: (
@@ -30,6 +50,18 @@ KEEP_RUNNING: dict[bool, str] = {
     ),
 }
 
+# $evidence in prompt.md and resume-prompt.md
+EVIDENCE_DIRECTORY = Template(
+    "Put every piece of evidence in `$evidence`. Your final message is saved as `$report`, so in it refer to each "
+    "file by its path relative to that, such as `evidence/01-open-home.png`."
+)
+
+# $earlier_evidence in resume-prompt.md
+EARLIER_EVIDENCE = Template(
+    "What you recorded before this request is in `$evidence`; refer to those files relative to the new report too, "
+    "such as `${relative}01-open-home.png`."
+)
+
 # $named_files in prompt.md
 NAMED_FILES = Template("\nThe request names these files:\n\n$files\n")
 
@@ -38,3 +70,9 @@ PREVIOUS_CHECKS = Template("\nEarlier checks are in these directories:\n\n$direc
 
 # $target in prompt.md, when no target is given
 TARGET_FROM_REQUEST = "where the request says"
+
+# The steering message a check sends its agent when most of its time is used.
+WRAP_UP = Template(
+    "This check has $left left before it is stopped. Stop testing now. Clean up as the request says, then end your "
+    "turn with your report: what you checked, the verdict for each, and what you did not get to."
+)

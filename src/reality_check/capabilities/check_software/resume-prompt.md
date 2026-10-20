@@ -5,6 +5,8 @@ $request
 </request>
 
 $previous_checks
+$computer_use
 $ask_first
 $keep_running
+$evidence $earlier_evidence
 As before, your final message is the report.

@@ -33,7 +33,7 @@ from openai_codex.types import (
     TurnStatus,
 )
 
-from reality_check.intelligence.events import EventLog, shorten
+from reality_check.intelligence.events import EventLog, fresh_input, shorten
 from reality_check.intelligence.interface import state_directory
 from reality_check.intelligence.schemas import AgentEvent, AgentEventKind, AgentRequest, AgentResult, Steering
 from reality_check.intelligence.submission import MAX_INVALID_SUBMISSIONS, resubmit_prompt, submission_problem
@@ -357,6 +357,9 @@ class CodexRun:
             {
                 "model": self._request.model,
                 "input_tokens": last.get("inputTokens"),
+                "fresh_input_tokens": fresh_input(
+                    last.get("inputTokens"), last.get("cachedInputTokens"), last.get("cacheWriteInputTokens")
+                ),
                 "output_tokens": last.get("outputTokens"),
                 "cache_read_tokens": last.get("cachedInputTokens"),
                 "cache_write_tokens": last.get("cacheWriteInputTokens"),

@@ -15,7 +15,7 @@ DEFAULT_INTELLIGENCE_MODELS: dict[AgentProvider, str] = {
     "codex": "gpt-6.1-sol",
     "claude": "claude-opus-5-5",
 }
-DEFAULT_INTELLIGENCE_REASONING_EFFORT: ReasoningEffort = "medium"
+DEFAULT_INTELLIGENCE_REASONING_EFFORT: ReasoningEffort = "high"
 # Who started or steered a check when the caller does not say; the tool cannot know, so it never guesses.
 DEFAULT_ORIGIN = "unknown"
 
@@ -194,14 +194,30 @@ class IntelligenceModels(BaseModel):
 
 # When the agent stops to ask before the work starts.
 AskFirst = Literal["when-off", "always", "never"]
-CheckStatus = Literal["running", "done", "cancelled"]
+CheckStatus = Literal["running", "done", "cancelled", "timed-out"]
 # A check's status as its record and its process tell it: `crashed` is running by its record with its process gone.
-CheckState = Literal["running", "crashed", "done", "cancelled", "failed"]
+CheckState = Literal["running", "crashed", "done", "cancelled", "timed-out", "failed"]
 CheckEventKind = Literal["started", "progress", "reasoning", "tool", "usage", "steered", "finished", "failed"]
 # The fields of a tool event's data that hold its arguments and result in full.
 FULL_FIELDS = ("arguments", "result", "detailed_result")
 # Relative, so checks are kept beside the project the caller works in.
 DEFAULT_CHECKS_DIRECTORY = Path(".agents/reality-check")
+DEFAULT_TIMEOUT_SECONDS = 3600
+
+
+class CheckUsage(BaseModel):
+    """What a check's agent used, summed over its model calls and counted the same way for every agent provider."""
+
+    model_calls: int = 0
+    fresh_input_tokens: int = Field(default=0, description="Input tokens neither read from nor written to a cache")
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_tokens: int = Field(default=0, description="Zero for agent providers that do not report them")
+    billing: dict[str, float] = Field(
+        default_factory=dict,
+        description="What the agent provider bills, by unit such as USD or AIU; empty when it reports none",
+    )
 
 
 class CheckResult(BaseModel):
@@ -214,6 +230,9 @@ class CheckResult(BaseModel):
     report: str = Field(description="The agent's final message, its report in Markdown")
     directory: Path
     next: str = Field(description="The exact command that resumes this check")
+    timeout_seconds: int | None = Field(description="The check's deadline; None when it had none")
+    elapsed_seconds: float
+    usage: CheckUsage
 
 
 class CheckTimeoutError(RealityCheckError):
@@ -257,6 +276,10 @@ class CheckRecord(BaseModel):
     reasoning_effort: ReasoningEffort | None = Field(description="What was sent; None when the model takes none")
     session_id: str | None = None
     status: CheckStatus | Literal["failed"] = "running"
+    timeout_seconds: int | None = Field(
+        default=DEFAULT_TIMEOUT_SECONDS, description="The check's deadline; None when it has none"
+    )
+    usage: CheckUsage = Field(default_factory=CheckUsage, description="Kept with every model call while the check runs")
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     ended_at: datetime | None = None
     pid: int | None = Field(
@@ -295,6 +318,24 @@ class CheckActivity(BaseModel):
     process_log: Path | None = Field(description="What the check's own process printed, for a detached check")
     entries: list[ActivityEntry]
     cursor: int = Field(description="Pass as `after` to read only what comes next")
+
+
+# endregion
+
+# region: Computer use
+
+# The desktop computer use drives. Under WSL that is the Windows desktop.
+ComputerUseTarget = Literal["windows", "wsl", "linux", "macos"]
+
+
+class ComputerUseInstall(BaseModel):
+    """The cua-driver that checks drive desktop apps with."""
+
+    target: ComputerUseTarget
+    version: str
+    executable: Path
+    already_installed: bool = Field(description="Whether it was there already, so nothing was downloaded")
+    remaining_step: str | None = Field(description="What the user still has to do by hand before checks can use it")
 
 
 # endregion

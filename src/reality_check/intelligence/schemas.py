@@ -47,7 +47,7 @@ class AgentRequest(BaseModel):
     reasoning_effort: ReasoningEffort | None = Field(
         default=DEFAULT_INTELLIGENCE_REASONING_EFFORT, description="None sends none, for a model that takes none"
     )
-    timeout_seconds: int = Field(gt=0)
+    timeout_seconds: int | None = Field(gt=0, description="How long the run may take; None for no limit")
     resume: str | None = Field(
         default=None,
         description="The session_id of an earlier result to continue in, so the agent keeps what it learned; None starts fresh",

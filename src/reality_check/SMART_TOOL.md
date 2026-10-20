@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.3.0
+version: 0.4.0
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding
 use_cases:
@@ -43,6 +43,14 @@ requires:
       Without them, the model-backed capabilities cannot run through claude.
     optional: true
     install: https://code.claude.com/docs/en/agent-sdk/quickstart
+  - name: cua-driver
+    purpose: >-
+      Drives desktop apps for checks: screenshots, the accessibility tree, and input. It needs
+      a desktop session (on Linux, DISPLAY or WAYLAND_DISPLAY) and, on macOS, the Accessibility
+      and Screen Recording permissions. Without it, checks of desktop UIs say computer use is
+      not enabled.
+    optional: true
+    install: https://github.com/microsoft/amplifier-smart-tool-reality-check#computer-use
 
 ---
 
@@ -73,6 +81,9 @@ uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-to
 
 # once, without installing
 uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check" reality-check --help
+
+# once, to check desktop apps
+reality-check install-computer-use
 ```
 
 `[all]` brings every agent provider the model-backed capabilities run through. Put

@@ -398,10 +398,12 @@ async def test_deltas_become_whole_messages_around_reasoning_and_tools_and_usage
     assert usage.data == {
         "model": "openai/gpt-6.1-sol",
         "input_tokens": 10,
+        "fresh_input_tokens": 6,
         "output_tokens": 2,
         "cache_read_tokens": 4,
         "cache_write_tokens": 0,
         "cost": {"USD": 0.0125},
+        "billing": {"USD": 0.0125},
     }
     assert terminal.text == "Let me look.Done."
     assert terminal.data == (await run.result()).model_dump(mode="json")

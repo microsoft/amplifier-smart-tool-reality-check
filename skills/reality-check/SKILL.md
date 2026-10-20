@@ -23,6 +23,9 @@ uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-to
 
 # once, without installing
 uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check" reality-check --help
+
+# once, to check desktop apps
+reality-check install-computer-use
 ```
 ## Use it
 
