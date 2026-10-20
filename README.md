@@ -1,30 +1,73 @@
-# Reality Check Smart Tool
+<h1 align="center">Reality Check Smart Tool</h1>
 
-Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding.
+<p align="center">The most thorough tester you have worked with. It finds what your agent missed, and proves it.</p>
 
-## Quick Start
+Has your agent ever finished a feature or a bug fix, said it works, and it was still broken?
+Reality Check is a [Smart Tool](https://github.com/microsoft/amplifier-smart-tools) that tests your app by using it: in a browser, on the desktop, or in a [Digital Twin Universe](https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe) that it sets up for you. Then it reports what works and what does not, with evidence for each finding.
 
-```bash
-# Install the Agent Skill so your agent knows about it.
-npx skills add microsoft/amplifier-smart-tool-reality-check
-# Install the tool, choosing the provider(s) you want
-uv tool install "reality-check[all | copilot | amplifier-agent | codex | claude] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
-reality-check install-computer-use   # once, to check desktop apps
-```
+Use it from the agent you already work in, such as Amplifier, Copilot, Codex, or Claude Code.
 
-This is a [Smart Tool](https://github.com/microsoft/amplifier-smart-tools) which is a library with a thin CLI over it and model-backed capabilities sit behind an interface so many providers can be used.
-We support [GitHub Copilot SDK](https://github.com/github/copilot-sdk), [Amplifier Agent](https://github.com/microsoft/amplifier-agent), the [OpenAI Codex SDK](https://github.com/openai/codex/tree/main/sdk/python), and the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python).
-
-## Installation
+## Quickstart
 
 Prerequisites:
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- For the model-backed capabilities, one of:
-  - `copilot` agent provider: [GitHub CLI](https://cli.github.com/) signed in to an account with a [GitHub Copilot subscription](https://github.com/github/copilot-cli#prerequisites).
-  - `amplifier-agent` agent provider: the model provider's credentials, for instance `OPENAI_API_KEY` for the default `openai/...` models. See [providers](https://github.com/microsoft/amplifier-agent/blob/v0.23.1/docs/providers.md).
-  - `codex` agent provider: the [Codex CLI](https://github.com/openai/codex) signed in with ChatGPT or an API key. See [authentication](https://developers.openai.com/codex/auth).
-  - `claude` agent provider: `ANTHROPIC_API_KEY`, or any of its other supported modes of [authentication](https://code.claude.com/docs/en/agent-sdk/quickstart).
-- (Optional) Install the Smart Tools skill so your agent knows about Smart Tools: `npx skills add microsoft/amplifier-smart-tools`
+- At least one agent provider to run checks:
+  - `copilot`: [GitHub CLI](https://cli.github.com/) signed in to an account with a [GitHub Copilot subscription](https://github.com/github/copilot-cli#prerequisites).
+  - `amplifier-agent`: the model provider's credentials, for instance `OPENAI_API_KEY` for the default `openai/...` models. See [providers](https://github.com/microsoft/amplifier-agent/blob/v0.23.1/docs/providers.md).
+  - `codex`: the [Codex CLI](https://github.com/openai/codex) signed in with ChatGPT or an API key. See [authentication](https://developers.openai.com/codex/auth).
+  - `claude`: `ANTHROPIC_API_KEY`, or any of its other supported modes of [authentication](https://code.claude.com/docs/en/agent-sdk/quickstart).
+
+1. Install the skill that teaches your agent to use Reality Check:
+
+   ```bash
+   npx skills add microsoft/amplifier-smart-tool-reality-check
+   ```
+
+1. Work as usual. When your agent finishes something, it can call Reality Check itself, or you can ask:
+
+   > I fixed the bug in issue #412 where saving a draft loses the attachments. Check that it is fixed and that nothing near it broke.
+
+   > My app runs at http://localhost:3000. Check that a new user can sign up and send a message.
+
+   > Set up this repository as if it were deployed, and check that the dashboard loads in under three seconds with no console errors.
+
+   > Click through every settings page and list where the spacing, icons, or wording are not consistent.
+
+1.  A report that says what was checked, what passed, and what failed, with screenshots and other evidence for each finding.
+Your agent reads it and suggests what to do next. Ask it before it makes changes. Each check is saved in `.agents/reality-check` by default, so you can come back to it later:
+
+## Command line
+
+```bash
+# Start a check and let it run in the background
+reality-check check-software --request "Check that a new user can sign up" --target http://localhost:3000 --detach
+
+# Follow what it does, steer it, or stop it
+reality-check read-check-activity --check-id CHECK_ID
+reality-check steer-check --check-id CHECK_ID --message "Skip the settings pages"
+reality-check cancel-check --check-id CHECK_ID
+
+# Continue a previous check, for instance after a new fix
+reality-check check-software --request "Check it again" --resume CHECK_ID
+
+# Other
+reality-check list-intelligence-models
+reality-check reaching-software-skill # or using-software-skill, using-computer-use-skill, gathering-evidence-skill
+reality-check install-computer-use
+```
+
+See the [CLI reference](docs/02-cli.md) for every flag and the [library reference](docs/01-library.md) for the Python surface.
+
+## Installation
+
+(Optional) Install the Smart Tools skill so your agent knows about Smart Tools: `npx skills add microsoft/amplifier-smart-tools`
+
+To install the CLI yourself:
+
+```bash
+# Choose the provider(s) you want: [all], [copilot], [amplifier-agent], [codex], or [claude]
+uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
+```
 
 To use it as a library:
 
@@ -49,28 +92,6 @@ To uninstall:
 npx skills remove reality-check   # add -g for global installs
 uv tool uninstall reality-check
 ```
-
-## Interface
-
-```bash
-reality-check manifest
-
-reality-check check-software --request "Check that a new user can sign up" --target http://localhost:3000 --detach
-
-reality-check read-check-activity --check-id CHECK_ID [--after CURSOR] [--tool-call-id ID]
-
-reality-check steer-check --check-id CHECK_ID --message "Skip the settings pages"
-
-reality-check cancel-check --check-id CHECK_ID
-
-reality-check list-intelligence-models
-
-reality-check install-computer-use
-
-reality-check reaching-software-skill # or using-software-skill, using-computer-use-skill, gathering-evidence-skill
-```
-
-See the [CLI reference](docs/02-cli.md) for every flag and the [library reference](docs/01-library.md) for the Python surface.
 
 ## Contributing
 
