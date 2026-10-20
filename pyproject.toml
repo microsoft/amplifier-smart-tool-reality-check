@@ -1,11 +1,11 @@
 [project]
 name = "reality-check"
-version = "0.4.0"
+version = "0.4.1"
 description = "Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding"
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
 dependencies = [
-    "certifi>=2026.7.22,<2027.0.0",
+    "certifi>=2026.10.19,<2027.0.0",
     "digital-twin-universe @ git+https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe@8435e711eff63d533475861962f267b91fc5917a",
     "filelock>=4.0.9,<5.0.0",
     "jsonschema>=4.26.0,<5.0.0",
@@ -50,6 +50,8 @@ module-name = "reality_check"
 add-bounds = "major"
 default-groups = "all"
 exclude-newer = "5 days"
+# Remove once the certifi release that exclude-newer allows has no known CVE.
+exclude-newer-package = { certifi = false }
 
 [dependency-groups]
 # Every agent provider, so `uv run` type checks and tests each implementation without asking for extras.
