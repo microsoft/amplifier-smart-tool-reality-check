@@ -4,24 +4,35 @@ from pathlib import Path
 
 from reality_check.capabilities.check_software import activity, check, intelligence_models
 from reality_check.capabilities.check_software.check import CheckRun
+from reality_check.capabilities.computer_use import install
 from reality_check.core import manifest
 from reality_check.core import skill as skill_module
 from reality_check.intelligence.interface import Intelligence
 from reality_check.schemas import (
     DEFAULT_CHECKS_DIRECTORY,
     DEFAULT_ORIGIN,
+    DEFAULT_TIMEOUT_SECONDS,
     AgentProvider,
     AskFirst,
     CheckActivity,
     CheckEvent,
     CheckResult,
     CheckTimeoutError,
+    ComputerUseInstall,
     IntelligenceModels,
     Manifest,
     ReasoningEffort,
 )
 
-__all__ = ["CheckActivity", "CheckEvent", "CheckResult", "CheckRun", "CheckTimeoutError", "IntelligenceModels"]
+__all__ = [
+    "CheckActivity",
+    "CheckEvent",
+    "CheckResult",
+    "CheckRun",
+    "CheckTimeoutError",
+    "ComputerUseInstall",
+    "IntelligenceModels",
+]
 
 
 def load_manifest() -> Manifest:
@@ -50,7 +61,7 @@ async def check_software(
     agent_provider: AgentProvider | None = None,
     model: str | None = None,
     reasoning_effort: ReasoningEffort | None = None,
-    timeout_seconds: int = 3600,
+    timeout_seconds: int | None = DEFAULT_TIMEOUT_SECONDS,
     images: list[Path] | None = None,
     origin: str = DEFAULT_ORIGIN,
     detach: bool = False,
@@ -58,7 +69,8 @@ async def check_software(
 ) -> CheckRun:
     """Start a check of software as a user uses it, returning its handle as soon as it runs. Model-backed.
 
-    With `detach`, the check runs in a process of its own that outlives this one.
+    With `detach`, the check runs in a process of its own that outlives this one. With `timeout_seconds` None, it runs
+    until its agent ends.
     """
     return await check.check_software(
         request=request,
@@ -108,6 +120,11 @@ def list_intelligence_models() -> IntelligenceModels:
     return intelligence_models.list_intelligence_models()
 
 
+def install_computer_use() -> ComputerUseInstall:
+    """Install, once, the pinned cua-driver that checks drive desktop apps with; reports one already there."""
+    return install.install_computer_use()
+
+
 def reaching_software_skill() -> str:
     """The skill for reaching software where it runs: LAN URLs, SSH and Tailscale, universes on another machine."""
     return skill_module.skill("reaching-software-skill")
@@ -116,6 +133,11 @@ def reaching_software_skill() -> str:
 def using_software_skill() -> str:
     """The skill for seeing and using software as a user: an open browser, computer use, a terminal, testers."""
     return skill_module.skill("using-software-skill")
+
+
+def using_computer_use_skill() -> str:
+    """The skill for driving a desktop app's real UI through cua-driver: screenshots, the accessibility tree, input."""
+    return skill_module.skill("using-computer-use-skill")
 
 
 def gathering_evidence_skill() -> str:

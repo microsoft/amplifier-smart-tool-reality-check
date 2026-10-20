@@ -36,7 +36,7 @@ from amplifier_agent import (
     list_providers,
 )
 
-from reality_check.intelligence.events import EventLog, shorten
+from reality_check.intelligence.events import EventLog, fresh_input, shorten
 from reality_check.intelligence.interface import state_directory
 from reality_check.intelligence.schemas import (
     IMAGE_MEDIA_TYPES,
@@ -336,15 +336,21 @@ class AmplifierAgentRun:
                     for entry in usage.entries if usage is not None else []:
                         if entry.tokens_in is None and entry.tokens_out is None and entry.cost is None:
                             continue
+                        cost = (
+                            None
+                            if entry.cost is None
+                            else {currency: float(amount) for currency, amount in entry.cost.items()}
+                        )
                         data = {
                             "model": f"{entry.provider}/{entry.model}",
                             "input_tokens": entry.tokens_in,
+                            # Amplifier counts cache reads, not cache writes, in its input tokens.
+                            "fresh_input_tokens": fresh_input(entry.tokens_in, entry.cache_read_tokens),
                             "output_tokens": entry.tokens_out,
                             "cache_read_tokens": entry.cache_read_tokens,
                             "cache_write_tokens": entry.cache_write_tokens,
-                            "cost": None
-                            if entry.cost is None
-                            else {currency: float(amount) for currency, amount in entry.cost.items()},
+                            "cost": cost,
+                            "billing": cost or {},
                         }
                         self._emit("usage", "", data, event)
                     return result

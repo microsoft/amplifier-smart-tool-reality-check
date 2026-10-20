@@ -3,7 +3,9 @@
 from pathlib import Path
 import sys
 
+from conftest import computer_use_off
 import fakes
+import pytest
 
 from reality_check.capabilities.check_software import background, check
 
@@ -16,4 +18,5 @@ def command(name: str, skills_cache: Path) -> list[str]:
 if __name__ == "__main__":
     check.POLL_SECONDS = 0.01
     check.SKILLS_CACHE_DIRECTORY = Path(sys.argv[2])
+    pytest.MonkeyPatch().setattr(check, "prepare_computer_use", computer_use_off)
     raise SystemExit(background.main(fakes.intelligence(sys.argv[1])))

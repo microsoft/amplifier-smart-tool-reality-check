@@ -9,6 +9,7 @@ Checks that an app works the way a real user would experience it, on your machin
 npx skills add microsoft/amplifier-smart-tool-reality-check
 # Install the tool, choosing the provider(s) you want
 uv tool install "reality-check[all | copilot | amplifier-agent | codex | claude] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
+reality-check install-computer-use   # once, to check desktop apps
 ```
 
 This is a [Smart Tool](https://github.com/microsoft/amplifier-smart-tools) which is a library with a thin CLI over it and model-backed capabilities sit behind an interface so many providers can be used.
@@ -30,6 +31,10 @@ To use it as a library:
 ```bash
 uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
 ```
+
+### Computer use
+
+Checks drive desktop apps through [cua-driver](https://github.com/trycua/cua/tree/main/libs/cua-driver). `reality-check install-computer-use` installs a pinned, hash-checked release once, into reality-check's own folder, with its telemetry and update checks off. Under WSL it installs the Windows build, and checks drive the Windows desktop. Linux needs a desktop session; macOS needs the Accessibility and Screen Recording permissions, which `cua-driver permissions grant` asks for.
 
 To update:
 
@@ -60,7 +65,9 @@ reality-check cancel-check --check-id CHECK_ID
 
 reality-check list-intelligence-models
 
-reality-check reaching-software-skill # or using-software-skill, gathering-evidence-skill
+reality-check install-computer-use
+
+reality-check reaching-software-skill # or using-software-skill, using-computer-use-skill, gathering-evidence-skill
 ```
 
 See the [CLI reference](docs/02-cli.md) for every flag and the [library reference](docs/01-library.md) for the Python surface.

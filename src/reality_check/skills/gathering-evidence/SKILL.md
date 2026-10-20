@@ -11,8 +11,8 @@ item you could not record is "not checked", never a pass.
 
 ## Where it goes
 
-Everything goes in a directory you choose, such as one you create for the check, flat, named so it
-sorts in step order:
+Everything goes in the evidence directory you were given, or else one you create for the check,
+flat, named so it sorts in step order:
 
 ```
 01-open-home.png
@@ -23,26 +23,33 @@ sorts in step order:
 timings.json
 ```
 
-Use `<step>-<what>.<ext>`, with the step number from the report. Give every file's path in your
-final message.
+Use `<step>-<what>.<ext>`, with the step number from the report. In the report, give each file's
+path relative to where the report is saved, such as `evidence/01-open-home.png`, so its links
+work wherever the report is read.
 
 ## What to record, by kind
 
 - Web: a screenshot after each step that matters (full page when layout matters); the network
-  log as HAR or a list of method, URL, status, size, and time; the console messages and page
+  log as HAR or a list of method, URL, status, size, time, and for a redirect its `Location`
+  header (HAR keeps it); the console messages and page
   errors; timings such as time to first content and to the page being usable. Playwright records
   HAR with `record_har_path` and the console with `page.on("console")`; CDP gives the same.
 - CLI: the exact command, its stdout, stderr, and exit code, in one transcript per step; the
   files it wrote when they matter.
 - Desktop and mobile: a screenshot or a short screen recording per step, and the app's logs
-  (`adb logcat`, `xcrun simctl spawn booted log`, the app's own log file).
+  (`adb logcat`, `xcrun simctl spawn booted log`, the app's own log file). With computer use,
+  the screenshots are `get_window_state`'s `screenshot_out_file`, before and after each checked
+  action, and `verify_state` output where the app has an accessibility tree.
 - Services: the log lines from the time of the failure, from the app or its universe.
 
 ## What makes it evidence
 
-- It was captured while you did the step, not reconstructed afterwards.
+- It was captured while you did the step, not reconstructed afterwards. Start recording before
+  the first action that can fail.
 - A failure's record shows the moment it happened: the request that returned 500, the console
-  error, the screenshot of the wrong state.
+  error, the screenshot of the wrong state. When a page fails to load, record its URL and the
+  error; the browser's error page often screenshots blank.
+- It is kept as captured: do not merge, rename, or delete evidence files afterwards.
 - Large responses, repeated polling, and slow requests are findings too; keep the record that
   shows them.
 - Never put secrets in evidence: blur or omit tokens, passwords, and cookies.

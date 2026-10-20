@@ -292,10 +292,13 @@ class ClaudeRun:
             {
                 "model": model,
                 "input_tokens": usage.get("input_tokens"),
+                # Anthropic counts cache reads and writes apart from input_tokens.
+                "fresh_input_tokens": usage.get("input_tokens"),
                 "output_tokens": usage.get("output_tokens"),
                 "cache_read_tokens": usage.get("cache_read_input_tokens"),
                 "cache_write_tokens": usage.get("cache_creation_input_tokens"),
                 "cost": cost,
+                "billing": cost or {},
                 "model_usage": dict(model_usage),
             },
         )

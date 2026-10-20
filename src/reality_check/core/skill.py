@@ -46,6 +46,12 @@ CAPABILITIES = (
         skill="capabilities/check_software/skill_list_intelligence_models.md",
     ),
     Capability(
+        "install-computer-use",
+        "Install, once, the pinned cua-driver that checks drive desktop apps with.",
+        model_backed=False,
+        skill="capabilities/computer_use/skill_install_computer_use.md",
+    ),
+    Capability(
         "reaching-software-skill",
         "Print the skill for reaching software where it runs: LAN URLs, SSH and Tailscale, remote universes.",
         model_backed=False,
@@ -56,6 +62,12 @@ CAPABILITIES = (
         "Print the skill for seeing and using software as a user: browsers, computer use, terminals, testers.",
         model_backed=False,
         skill="skills/using-software/SKILL.md",
+    ),
+    Capability(
+        "using-computer-use-skill",
+        "Print the skill for driving a desktop app's real UI through cua-driver: screenshots, the accessibility tree, input.",
+        model_backed=False,
+        skill="skills/using-computer-use/SKILL.md",
     ),
     Capability(
         "gathering-evidence-skill",

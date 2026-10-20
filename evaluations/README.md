@@ -22,6 +22,7 @@ Needs Docker on the host and the credentials of each agent provider used: for co
 run.py              list, run, cleanup
 environment/        the common developer machine; task profiles build their twin from it
 common/             optional helpers for tasks
+github-desktop/     the twin the desktop-app tasks build: a Linux desktop with GitHub Desktop and a repository in progress
 tasks/<name>/
   task.py           the whole task
   expected.md       the answer key
@@ -68,7 +69,7 @@ report.md         the capability's report
 grade.json        the judge's score, reason, and files for each criterion
 events.jsonl      the capability's events
 check/            the capability's own record, evidence included
-session/          the agent provider's native session, when it is kept outside check/session/
+session/          the agent provider's native session, from check/session/, or from the provider's own folder for a check resumed from one made before sessions were kept in the record
 changes.json      every file made or changed in the environment; changes/ holds copies of the small ones
 installed.diff    packages installed, from packages/before and packages/after
 logs/             setup and step logs, the provider's logs, nested containers, DTU state, the nested daemon

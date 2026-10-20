@@ -387,10 +387,12 @@ async def test_claude_messages_become_agent_events_ending_in_one_terminal(world:
     assert usage.data == {
         "model": MODEL,
         "input_tokens": 10,
+        "fresh_input_tokens": 10,
         "output_tokens": 2,
         "cache_read_tokens": 3,
         "cache_write_tokens": 4,
         "cost": {"USD": 0.01},
+        "billing": {"USD": 0.01},
         "model_usage": {MODEL: model_usage(0.01)},
     }
     assert (terminal.text, terminal.data["text"], terminal.data["session_id"]) == ("Done.", "Done.", SESSION)

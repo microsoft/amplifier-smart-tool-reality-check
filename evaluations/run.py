@@ -77,7 +77,7 @@ def run(
         list[str] | None,
         typer.Option("--model", help="A model to run; repeatable. The provider's default when omitted."),
     ] = None,
-    reasoning_effort: Annotated[ReasoningEffort, typer.Option("--reasoning-effort")] = "medium",
+    reasoning_effort: Annotated[ReasoningEffort, typer.Option("--reasoning-effort")] = "high",
     repeat: Annotated[int, typer.Option("--repeat", min=1, help="Runs of each task and model.")] = 1,
     parallel: Annotated[int, typer.Option("--parallel", min=1, help="Runs of one task at the same time.")] = 1,
     judge_agent_provider: Annotated[AgentProvider, typer.Option("--judge-agent-provider")] = "copilot",

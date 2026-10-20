@@ -32,7 +32,7 @@ reality-check manifest
 reality-check check-software --request TEXT [--target TARGET] [--resume CHECK_ID] [--previous-checks PATH ...]
                              [--ask-first when-off|always|never] [--keep-running] [--checks-directory .agents/reality-check]
                              [--agent-provider copilot|amplifier-agent|codex|claude] [--model MODEL]
-                             [--reasoning-effort low|medium|high|xhigh|max] [--timeout-seconds 3600]
+                             [--reasoning-effort low|medium|high|xhigh|max] [--timeout-seconds 3600, 0 for no limit]
                              [--image PATH ...] [--origin unknown] [--detach]
 ```
 
@@ -56,7 +56,7 @@ The output is made for that:
 - The first line is always `started`, with the `check_id` and the check's directory.
 - The last line is always `finished`, carrying the `CheckResult`, or `failed`, carrying the error. A file that ends without one means the process was killed.
 
-Ctrl+C, SIGTERM, and closing the console all cancel the check the same way; its session can still be resumed. Exits 0 when the check ends `done`, and 1 when it is cancelled or fails. What the report says about the software never changes the exit code.
+Ctrl+C, SIGTERM, and closing the console all cancel the check the same way; its session can still be resumed. Exits 0 when the check ends `done`, and 1 when it is cancelled, times out, or fails. What the report says about the software never changes the exit code.
 
 ## reality-check steer-check
 
@@ -90,11 +90,20 @@ reality-check list-intelligence-models
 
 `lib.list_intelligence_models()`, printed as JSON.
 
+## reality-check install-computer-use
+
+```bash
+reality-check install-computer-use
+```
+
+`lib.install_computer_use()`, printed as JSON.
+
 ## Skills for checking software
 
 ```bash
 reality-check reaching-software-skill
 reality-check using-software-skill
+reality-check using-computer-use-skill
 reality-check gathering-evidence-skill
 ```
 

@@ -239,6 +239,8 @@ async def test_sdk_events_become_agent_events_ending_in_one_terminal(world: Call
                     model="gpt-6.1-sol",
                     input_tokens=10,
                     output_tokens=2,
+                    cache_read_tokens=6,
+                    cache_write_tokens=1,
                     cost=1.0,
                     copilot_usage=AssistantUsageCopilotUsage(total_nano_aiu=1500.0),
                 ),
@@ -262,6 +264,8 @@ async def test_sdk_events_become_agent_events_ending_in_one_terminal(world: Call
     assert usage.data["input_tokens"] == 10
     assert usage.data["cost"] == 1.0
     assert usage.data["copilot_usage"] == {"totalNanoAiu": 1500.0}
+    assert usage.data["fresh_input_tokens"] == 3
+    assert usage.data["billing"] == {"AIU": 1.5e-6}
     assert said.text == "done"
     assert terminal.data["session_id"] == SESSION
     assert all(each.time.tzinfo is not None for each in events)
@@ -460,7 +464,7 @@ async def test_the_session_directory_is_the_config_directory_on_create_and_resum
 
     created, resumed = fake.options
     assert created["config_directory"] == str(tmp_path / "session")
-    assert created["reasoning_effort"] == "medium"
+    assert created["reasoning_effort"] == "high"
     assert resumed["config_directory"] == str(tmp_path / "again")
     assert "reasoning_effort" not in resumed
     assert fake.resumed == [SESSION]

@@ -1,0 +1,4 @@
+. {
+    rewrite name suffix .lan . answer auto
+    forward . 127.0.0.11
+}

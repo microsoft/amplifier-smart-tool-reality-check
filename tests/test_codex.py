@@ -360,6 +360,7 @@ async def test_notifications_become_agent_events_ending_in_one_terminal(world: C
     assert first_usage.data == {
         "model": "gpt-6.1-sol",
         "input_tokens": 10,
+        "fresh_input_tokens": 7,
         "output_tokens": 2,
         "cache_read_tokens": 3,
         "cache_write_tokens": 0,

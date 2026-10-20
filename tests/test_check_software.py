@@ -27,8 +27,8 @@ from reality_check.capabilities.check_software import check
 from reality_check.capabilities.check_software.record import process_started
 from reality_check.cli import app
 from reality_check.intelligence import interface
-from reality_check.intelligence.schemas import AgentRequest
-from reality_check.schemas import CheckEvent, CheckRecord, CheckTimeoutError, RealityCheckError
+from reality_check.intelligence.schemas import AgentRequest, AgentResult
+from reality_check.schemas import CheckEvent, CheckRecord, CheckTimeoutError, CheckUsage, RealityCheckError
 
 REQUEST = "Check that notes.md is followed and the page shows a button labelled Go"
 
@@ -101,11 +101,19 @@ async def test_a_check_streams_its_events_and_ends_with_the_agent_s_report(works
     assert REQUEST in request.prompt
     assert "http://localhost:8000" in request.prompt
     assert str(workspace / "notes.md") in request.prompt
-    assert not (run.directory / "evidence").exists()
+    assert (run.directory / "evidence").is_dir()
+    assert f"Put every piece of evidence in `{run.directory / 'evidence'}`." in request.prompt
+    assert f"saved as `{run.directory / 'report.md'}`" in request.prompt
     assert request.mcp_servers == {}
     assert check._dtu_command() in request.prompt
     skills = {path.name for directory in request.skill_directories for path in directory.iterdir()}
-    assert skills == {"reaching-software", "using-software", "gathering-evidence", "digital-twin-universe"}
+    assert skills == {
+        "reaching-software",
+        "using-software",
+        "using-computer-use",
+        "gathering-evidence",
+        "digital-twin-universe",
+    }
     dtu_skills = request.skill_directories[-1]
     assert dtu_skills.parent == skills_cache
     dtu_skill = (dtu_skills / "digital-twin-universe" / "SKILL.md").read_text(encoding="utf-8")
@@ -210,6 +218,9 @@ async def test_resume_continues_the_session_on_the_same_agent_provider(tmp_path:
     assert request.resume == SESSION
     assert "<request>\nGo on.\n</request>" in request.prompt
     assert "your final message is the report" in request.prompt
+    assert f"Put every piece of evidence in `{second.directory / 'evidence'}`." in request.prompt
+    assert f"before this request is in `{first.directory / 'evidence'}`" in request.prompt
+    assert f"`../{first.check_id}/evidence/01-open-home.png`" in request.prompt
 
 
 async def test_a_check_past_its_timeout_fails_with_the_result_so_far(tmp_path: Path) -> None:
@@ -227,8 +238,66 @@ async def test_a_check_past_its_timeout_fails_with_the_result_so_far(tmp_path: P
     assert events[-1].kind == "failed"
     assert events[-1].data["code"] == "check-timeout"
     assert events[-1].data["result"]["report"] == "Stopped early."
+    assert failure.value.result.status == "timed-out"
+    assert failure.value.result.timeout_seconds == 1
     record = CheckRecord.model_validate_json((run.directory / "check.json").read_text(encoding="utf-8"))
-    assert (record.status, record.session_id) == ("failed", SESSION)
+    assert (record.status, record.session_id, record.timeout_seconds) == ("timed-out", SESSION, 1)
+
+
+async def test_a_check_near_its_timeout_tells_its_agent_to_report_with_the_time_left(tmp_path: Path) -> None:
+    fake = FakeIntelligence(waits_for_steering)
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, timeout_seconds=2, intelligence=fake)
+
+    result = await run.result()
+    steered = [event for event in await collect(run) if event.kind == "steered"]
+
+    assert result.status == "done"
+    assert fake.runs[0].steered[0].startswith("This check has 1 seconds left before it is stopped.")
+    assert steered[0].data["origin"] == "reality-check"
+
+
+async def test_a_check_without_a_timeout_has_no_deadline(tmp_path: Path) -> None:
+    fake = FakeIntelligence(finishes())
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, timeout_seconds=None, intelligence=fake)
+
+    result = await run.result()
+
+    assert result.timeout_seconds is None
+    assert fake.runs[0].request.timeout_seconds is None
+    record = CheckRecord.model_validate_json((run.directory / "check.json").read_text(encoding="utf-8"))
+    assert record.timeout_seconds is None
+
+
+async def test_a_check_sums_its_usage_the_same_way_for_every_agent_provider(tmp_path: Path) -> None:
+    async def script(run: FakeRun) -> AgentResult:
+        for _ in range(2):
+            run.emit(
+                "usage",
+                data={
+                    "input_tokens": 1000,
+                    "fresh_input_tokens": 100,
+                    "cache_read_tokens": 850,
+                    "cache_write_tokens": 50,
+                    "output_tokens": 20,
+                    "billing": {"AIU": 1.5},
+                },
+            )
+        return AgentResult(text="# Report", session_id=SESSION)
+
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=FakeIntelligence(script))
+    result = await run.result()
+
+    assert result.usage == CheckUsage(
+        model_calls=2,
+        fresh_input_tokens=200,
+        cache_read_tokens=1700,
+        cache_write_tokens=100,
+        output_tokens=40,
+        billing={"AIU": 3.0},
+    )
+    assert result.elapsed_seconds >= 0
+    record = CheckRecord.model_validate_json((run.directory / "check.json").read_text(encoding="utf-8"))
+    assert record.usage == result.usage
 
 
 @pytest.mark.parametrize(("script", "exit_code", "status"), [(finishes(), 0, "done"), (fails, 1, None)])
@@ -387,7 +456,7 @@ async def test_a_model_or_effort_reality_check_does_not_run_fails_before_the_che
         assert "list-intelligence-models" in failure.value.remedy
 
 
-async def test_a_model_that_takes_no_effort_is_sent_none_and_the_default_model_medium(
+async def test_a_model_that_takes_no_effort_is_sent_none_and_the_default_model_high(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     made = without_fake_resolution(monkeypatch)
@@ -397,8 +466,8 @@ async def test_a_model_that_takes_no_effort_is_sent_none_and_the_default_model_m
     await auto.result()
     await default.result()
 
-    assert [fake.runs[0].request.reasoning_effort for fake in made] == [None, "medium"]
-    assert (record_of(auto).reasoning_effort, record_of(default).reasoning_effort) == (None, "medium")
+    assert [fake.runs[0].request.reasoning_effort for fake in made] == [None, "high"]
+    assert (record_of(auto).reasoning_effort, record_of(default).reasoning_effort) == (None, "high")
 
 
 async def test_an_injected_intelligence_runs_any_model(tmp_path: Path) -> None:

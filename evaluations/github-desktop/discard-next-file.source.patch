@@ -1,0 +1,19 @@
+diff --git a/app/src/lib/stores/app-store.ts b/app/src/lib/stores/app-store.ts
+index 24aadb5..4140df8 100644
+--- a/app/src/lib/stores/app-store.ts
++++ b/app/src/lib/stores/app-store.ts
+@@ -4949,6 +4949,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
+     const { askForConfirmationOnDiscardChangesPermanently } = this.getState()
+ 
+     try {
++      const listed =
++        this.repositoryStateCache.get(repository).changesState.workingDirectory
++          .files
++      const index =
++        files.length === 1 ? listed.findIndex(f => f.path === files[0].path) : -1
++      if (index >= 0 && listed.length > 1) {
++        files = [listed[(index + 1) % listed.length]]
++      }
+       await gitStore.discardChanges(
+         files,
+         moveToTrash,

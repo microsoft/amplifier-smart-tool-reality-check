@@ -26,14 +26,14 @@ def test_the_list_is_the_allowlist_with_its_efforts_and_the_default() -> None:
     assert models.default.model_dump() == {
         "agent_provider": "copilot",
         "model": "gpt-6.1-sol",
-        "reasoning_effort": "medium",
+        "reasoning_effort": "high",
     }
 
 
 @pytest.mark.parametrize(
     ("model", "effort", "images", "expected"),
     [
-        ("gpt-6.1-sol", None, [], "medium"),
+        ("gpt-6.1-sol", None, [], "high"),
         ("claude-opus-5.5", "high", [Path("shot.png")], "high"),
         ("auto", None, [], None),
         ("auto", "medium", [], "bad-reasoning-effort"),
@@ -63,10 +63,10 @@ def test_the_cli_prints_the_list_as_json() -> None:
 @pytest.mark.parametrize(
     ("agent_provider", "model", "expected"),
     [
-        ("amplifier-agent", "openai/gpt-6.1-sol", "medium"),
+        ("amplifier-agent", "openai/gpt-6.1-sol", "high"),
         ("amplifier-agent", "gpt-6.1-sol", "model-not-allowed"),
-        ("codex", "gpt-6.1-sol", "medium"),
-        ("claude", "claude-sonnet-5-5", "medium"),
+        ("codex", "gpt-6.1-sol", "high"),
+        ("claude", "claude-sonnet-5-5", "high"),
         ("claude", "claude-sonnet-5.5", "model-not-allowed"),
     ],
 )

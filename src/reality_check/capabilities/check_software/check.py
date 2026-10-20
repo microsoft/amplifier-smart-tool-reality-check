@@ -23,10 +23,18 @@ import yaml
 
 from reality_check.capabilities.check_software.constants import (
     ASK_FIRST,
+    COMPUTER_USE_ENABLED,
+    COMPUTER_USE_NOT_INSTALLED,
+    COMPUTER_USE_OFF,
+    COMPUTER_USE_UNSUPPORTED,
+    EARLIER_EVIDENCE,
+    EVIDENCE_DIRECTORY,
     KEEP_RUNNING,
     NAMED_FILES,
+    NO_ACCESSIBILITY_TREE,
     PREVIOUS_CHECKS,
     TARGET_FROM_REQUEST,
+    WRAP_UP,
 )
 from reality_check.capabilities.check_software.intelligence_models import require_allowed
 from reality_check.capabilities.check_software.record import (
@@ -40,6 +48,8 @@ from reality_check.capabilities.check_software.record import (
     read_events,
     write_record,
 )
+from reality_check.capabilities.computer_use.prepare import ComputerUse, NotInstalled, prepare_computer_use
+from reality_check.capabilities.computer_use.target import Unavailable
 from reality_check.core.skill import DISTRIBUTION, skill_directory
 from reality_check.intelligence.interface import AgentRun, Intelligence, resolve_agent_provider, select_intelligence
 from reality_check.intelligence.schemas import IMAGE_MEDIA_TYPES, AgentEvent, AgentRequest, AgentResult, HostWorkspace
@@ -49,6 +59,7 @@ from reality_check.schemas import (
     DEFAULT_INTELLIGENCE_MODELS,
     DEFAULT_INTELLIGENCE_REASONING_EFFORT,
     DEFAULT_ORIGIN,
+    DEFAULT_TIMEOUT_SECONDS,
     AgentProvider,
     AskFirst,
     CheckEvent,
@@ -57,13 +68,14 @@ from reality_check.schemas import (
     CheckResult,
     CheckStatus,
     CheckTimeoutError,
+    CheckUsage,
     RealityCheckError,
     ReasoningEffort,
 )
 
 HERE = Path(__file__).parent
 # The skills under the package's `skills/` directory that every check's agent gets.
-CHECKING_SKILLS = ("reaching-software", "using-software", "gathering-evidence")
+CHECKING_SKILLS = ("reaching-software", "using-software", "using-computer-use", "gathering-evidence")
 DTU_SKILL = "digital-twin-universe"
 DTU_COMMAND = "digital-twin-universe"
 # Skills made at run time, outside the project the agent works in.
@@ -73,11 +85,15 @@ SKILLS_CACHE_DIRECTORY = platformdirs.user_cache_path(DISTRIBUTION, appauthor=Fa
 POLL_SECONDS = 1.0
 # The agent's own timeout outlasts the check's, so the check is what stops it and the session drains whole.
 AGENT_TIMEOUT_GRACE_SECONDS = 60
+# The share of its time after which a check tells its agent to stop testing and write its report.
+WRAP_UP_FRACTION = 0.85
+WRAP_UP_ORIGIN = "reality-check"
 SHORTENED_LENGTH = 500
 MAX_NAMED_FILES = 20
 # What starts a detached check, given its request on stdin. Tests swap it for a command that fakes the agent.
 BACKGROUND_COMMAND = [sys.executable, "-m", "reality_check.capabilities.check_software.background"]
 IMAGES = "images"
+EVIDENCE = "evidence"
 # The parts of the record the `started` event repeats, so the events alone say what was asked and how.
 STARTED_FIELDS = {
     "request",
@@ -133,7 +149,7 @@ class DetachedCheckRequest(BaseModel):
     model: str | None
     # Any string, so one that is not a reasoning effort fails in that process with the same error as in this one.
     reasoning_effort: str | None
-    timeout_seconds: int
+    timeout_seconds: int | None
     images: list[Path] | None
     origin: str
 
@@ -147,8 +163,9 @@ class InProcessCheckRun:
         directory: Path,
         intelligence: Intelligence,
         request: AgentRequest,
-        timeout_seconds: int,
+        timeout_seconds: int | None,
         next_command: str,
+        computer_use: ComputerUse | NotInstalled | Unavailable,
     ) -> None:
         self.check_id = record.check_id
         self.directory = directory
@@ -157,6 +174,8 @@ class InProcessCheckRun:
         self._request = request
         self._timeout_seconds = timeout_seconds
         self._next = next_command
+        self._computer_use = computer_use
+        self._preparing: asyncio.Future[ComputerUse | NotInstalled | Unavailable] | None = None
         self._events: list[CheckEvent] = []
         # Replaced on every append, so a reader waits on the one current when it ran out of events.
         self._appended = asyncio.Event()
@@ -245,8 +264,9 @@ class InProcessCheckRun:
         return result
 
     async def _run(self) -> CheckResult:
-        deadline = asyncio.get_running_loop().time() + self._timeout_seconds
+        deadline = None if self._timeout_seconds is None else asyncio.get_running_loop().time() + self._timeout_seconds
         watcher = asyncio.create_task(self._watch())
+        wrap_up = asyncio.create_task(self._wrap_up(self._timeout_seconds)) if self._timeout_seconds else None
         forward: asyncio.Task[None] | None = None
         timed_out = False
         try:
@@ -269,13 +289,15 @@ class InProcessCheckRun:
                 await self._cancel_task
         finally:
             watcher.cancel()
+            if wrap_up is not None:
+                wrap_up.cancel()
+            await self._release_computer_use()
         if timed_out:
             report = self._report(outcome.text, "it timed out")
             so_far = (
                 f"its report so far is in {self._report_path}" if self._report_path.is_file() else "it wrote no report"
             )
-            result = self._result("cancelled", outcome.session_id, report)
-            self._end("failed", outcome.session_id)
+            result = self._finish("timed-out", outcome.session_id, report)
             raise CheckTimeoutError(
                 message=f"Check {self.check_id} did not finish within {self._timeout_seconds} seconds; the agent was "
                 f"stopped and {so_far}.",
@@ -295,6 +317,37 @@ class InProcessCheckRun:
                 "session was kept, or start the check again.",
             )
         return self._finish("done", outcome.session_id, self._report(outcome.text, "it ended"))
+
+    async def _enable_installed_computer_use(self) -> None:
+        """Make computer use ready once the agent has installed it during the check."""
+        if not isinstance(self._computer_use, NotInstalled) or not self._computer_use.executable.is_file():
+            return
+        self._preparing = asyncio.ensure_future(
+            asyncio.to_thread(prepare_computer_use, self.check_id, SKILLS_CACHE_DIRECTORY)
+        )
+        # Shielded, so a check ending meanwhile still gets what it made ready, and lets go of it.
+        self._computer_use = await asyncio.shield(self._preparing)
+
+    async def _release_computer_use(self) -> None:
+        """Let go of computer use however the check ends; a failure to stop the daemon never fails the check."""
+        if self._preparing is not None:
+            with contextlib.suppress(Exception):
+                self._computer_use = await self._preparing
+        if isinstance(self._computer_use, ComputerUse):
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(self._computer_use.release)
+
+    async def _wrap_up(self, timeout_seconds: int) -> None:
+        """Tell the agent how little time is left, so it reports what it has before the check stops it."""
+        await asyncio.sleep(timeout_seconds * WRAP_UP_FRACTION)
+        message = WRAP_UP.substitute(left=_duration(timeout_seconds * (1 - WRAP_UP_FRACTION)))
+        if self._agent is None or self._pending:
+            self._pending.append((message, WRAP_UP_ORIGIN))
+            return
+        try:
+            await self._deliver(message, WRAP_UP_ORIGIN)
+        except RealityCheckError as error:
+            self._emit("steered", message, {"error": str(error), "code": error.code, "origin": WRAP_UP_ORIGIN})
 
     async def _stop_after_timeout(self) -> AgentResult:
         agent = self._agent
@@ -317,6 +370,7 @@ class InProcessCheckRun:
                 phase = "call" if event.kind == "tool_call" else "result"
                 self._emit("tool", _shorten(event.text), {**event.data, "phase": phase}, event.time)
             case "usage":
+                self._record = self._record.model_copy(update={"usage": _added(self._record.usage, event.data)})
                 self._emit("usage", event.text, event.data, event.time)
             case "terminal":
                 pass
@@ -328,6 +382,7 @@ class InProcessCheckRun:
             self._note_session()
             if (self.directory / "cancel").exists():
                 self._request_cancel()
+            await self._enable_installed_computer_use()
             for path in sorted(steer.glob("*.json")):
                 note = json.loads(path.read_text(encoding="utf-8"))
                 self._pending.append((note["message"], note.get("origin", DEFAULT_ORIGIN)))
@@ -381,6 +436,11 @@ class InProcessCheckRun:
             report=report,
             directory=self.directory,
             next=self._next,
+            timeout_seconds=self._timeout_seconds,
+            elapsed_seconds=round(
+                ((self._record.ended_at or datetime.now(UTC)) - self._record.started_at).total_seconds(), 3
+            ),
+            usage=self._record.usage,
         )
 
     def _finish(self, status: CheckStatus, session_id: str | None, report: str) -> CheckResult:
@@ -480,7 +540,7 @@ async def check_software(
     agent_provider: AgentProvider | None = None,
     model: str | None = None,
     reasoning_effort: ReasoningEffort | None = None,
-    timeout_seconds: int = 3600,
+    timeout_seconds: int | None = DEFAULT_TIMEOUT_SECONDS,
     images: list[Path] | None = None,
     origin: str = DEFAULT_ORIGIN,
     detach: bool = False,
@@ -545,7 +605,7 @@ async def _start(
     agent_provider: AgentProvider | None,
     model: str | None,
     reasoning_effort: ReasoningEffort | None,
-    timeout_seconds: int,
+    timeout_seconds: int | None,
     images: list[Path] | None,
     origin: str,
     intelligence: Intelligence | None,
@@ -557,7 +617,7 @@ async def _start(
         raise RealityCheckError(
             code="check-not-resumable",
             message=f"Check {resumed.check_id} has no agent session to resume; its status is {resumed.status}.",
-            remedy="Resume a check that ended done or cancelled, or start a new check without resume.",
+            remedy="Resume a check that ended done, cancelled, or timed-out, or start a new check without resume.",
         )
     if resumed is not None and check_state(resumed) == "running":
         # Two processes driving one session would each send it turns the other does not know about.
@@ -613,6 +673,7 @@ async def _start(
         agent_provider=provider,
         model=model,
         reasoning_effort=effort,
+        timeout_seconds=timeout_seconds,
         pid=pid,
         pid_started=process_started(pid),
         origin=origin,
@@ -620,23 +681,33 @@ async def _start(
         detached=detached,
     )
     write_record(directory, record)
+    # Decided again on every start, so a check resumed after its caller enabled computer use gets it.
+    computer_use = await asyncio.to_thread(prepare_computer_use, check_id, SKILLS_CACHE_DIRECTORY)
     if resumed is not None:
-        prompt = _resume_prompt(request, previous, ask_first, keep_running)
+        prompt = _resume_prompt(
+            request, directory, root / resumed.check_id, previous, ask_first, keep_running, computer_use
+        )
     else:
-        prompt = _prompt(request, target, previous, ask_first, keep_running)
+        prompt = _prompt(request, target, directory, previous, ask_first, keep_running, computer_use)
     agent_request = AgentRequest(
         prompt=prompt,
         model=model,
         workspace=HostWorkspace(path=Path.cwd()),
         reasoning_effort=effort,
-        timeout_seconds=timeout_seconds + AGENT_TIMEOUT_GRACE_SECONDS,
+        timeout_seconds=None if timeout_seconds is None else timeout_seconds + AGENT_TIMEOUT_GRACE_SECONDS,
         resume=resumed.session_id if resumed is not None else None,
         skill_directories=[skill_directory() / "skills", _dtu_skill()],
         images=copied,
         session_directory=session_directory,
     )
     return InProcessCheckRun(
-        record, directory, intelligence, agent_request, timeout_seconds, _next_command(check_id, checks_directory)
+        record,
+        directory,
+        intelligence,
+        agent_request,
+        timeout_seconds,
+        _next_command(check_id, checks_directory),
+        computer_use,
     )
 
 
@@ -827,6 +898,7 @@ def _new_check_directory(root: Path) -> tuple[str, Path]:
         except FileExistsError:
             continue
         (directory / "steer").mkdir()
+        (directory / EVIDENCE).mkdir()
         return check_id, directory
 
 
@@ -868,6 +940,13 @@ def _dtu_command() -> str:
     return _quoted(found) if found else f"{_quoted(sys.executable)} -m digital_twin_universe.cli"
 
 
+def _install_command() -> str:
+    """`install-computer-use` from this environment's CLI, which need not be on the agent's PATH."""
+    found = shutil.which(DISTRIBUTION, path=str(Path(sys.executable).parent))
+    cli = _quoted(found) if found else f"{_quoted(sys.executable)} -m reality_check.cli"
+    return f"{cli} install-computer-use"
+
+
 def _named_files(*texts: str | None) -> list[Path]:
     """Files the texts name that exist relative to the working directory, best effort."""
     found: list[Path] = []
@@ -886,9 +965,11 @@ def _named_files(*texts: str | None) -> list[Path]:
 def _prompt(
     request: str,
     target: str | None,
+    directory: Path,
     previous_checks: list[Path],
     ask_first: AskFirst,
     keep_running: bool,
+    computer_use: ComputerUse | NotInstalled | Unavailable,
 ) -> str:
     files = _named_files(request, target)
     named = NAMED_FILES.substitute(files=_listed(files)) if files else ""
@@ -896,20 +977,53 @@ def _prompt(
         request=request.strip(),
         target=target or TARGET_FROM_REQUEST,
         named_files=named,
+        evidence=_evidence_text(directory),
         previous_checks=_previous_checks_text(previous_checks),
+        computer_use=_computer_use_text(computer_use),
         ask_first=ASK_FIRST[ask_first],
         keep_running=KEEP_RUNNING[keep_running],
         dtu=_dtu_command(),
     )
 
 
-def _resume_prompt(request: str, previous_checks: list[Path], ask_first: AskFirst, keep_running: bool) -> str:
+def _resume_prompt(
+    request: str,
+    directory: Path,
+    resumed: Path,
+    previous_checks: list[Path],
+    ask_first: AskFirst,
+    keep_running: bool,
+    computer_use: ComputerUse | NotInstalled | Unavailable,
+) -> str:
     return Template((HERE / "resume-prompt.md").read_text(encoding="utf-8")).substitute(
         request=request.strip(),
+        evidence=_evidence_text(directory),
+        earlier_evidence=EARLIER_EVIDENCE.substitute(
+            evidence=resumed / EVIDENCE, relative=f"../{resumed.name}/{EVIDENCE}/"
+        ),
         previous_checks=_previous_checks_text(previous_checks),
+        computer_use=_computer_use_text(computer_use),
         ask_first=ASK_FIRST[ask_first],
         keep_running=KEEP_RUNNING[keep_running],
     )
+
+
+def _evidence_text(directory: Path) -> str:
+    return EVIDENCE_DIRECTORY.substitute(evidence=directory / EVIDENCE, report=directory / "report.md")
+
+
+def _computer_use_text(computer_use: ComputerUse | NotInstalled | Unavailable) -> str:
+    if isinstance(computer_use, ComputerUse):
+        command = _quoted(str(computer_use.command))
+        text = COMPUTER_USE_ENABLED.substitute(command=command)
+        return text if computer_use.accessibility else f"{text} {NO_ACCESSIBILITY_TREE.substitute(command=command)}"
+    if isinstance(computer_use, NotInstalled):
+        return COMPUTER_USE_NOT_INSTALLED.substitute(
+            install=_install_command(), command=_quoted(str(computer_use.command))
+        )
+    if computer_use.remedy is None:
+        return COMPUTER_USE_UNSUPPORTED.substitute(reason=computer_use.reason)
+    return COMPUTER_USE_OFF.substitute(reason=computer_use.reason, remedy=computer_use.remedy)
 
 
 def _previous_checks_text(previous_checks: list[Path]) -> str:
@@ -918,6 +1032,29 @@ def _previous_checks_text(previous_checks: list[Path]) -> str:
 
 def _listed(paths: list[Path]) -> str:
     return "\n".join(f"- `{path}`" for path in paths)
+
+
+def _duration(seconds: float) -> str:
+    """Seconds as a person reads them: whole minutes from two minutes up."""
+    if seconds >= 120:
+        return f"{round(seconds / 60)} minutes"
+    return f"{max(1, round(seconds))} seconds"
+
+
+def _added(usage: CheckUsage, data: dict[str, Any]) -> CheckUsage:
+    """`usage` with one model call's `usage` event added."""
+    billing = dict(usage.billing)
+    for unit, amount in (data.get("billing") or {}).items():
+        billing[unit] = billing.get(unit, 0.0) + amount
+    return CheckUsage(
+        model_calls=usage.model_calls + 1,
+        fresh_input_tokens=usage.fresh_input_tokens + (data.get("fresh_input_tokens") or 0),
+        cache_read_tokens=usage.cache_read_tokens + (data.get("cache_read_tokens") or 0),
+        cache_write_tokens=usage.cache_write_tokens + (data.get("cache_write_tokens") or 0),
+        output_tokens=usage.output_tokens + (data.get("output_tokens") or 0),
+        reasoning_tokens=usage.reasoning_tokens + (data.get("reasoning_tokens") or 0),
+        billing=billing,
+    )
 
 
 def _shorten(text: str, limit: int = SHORTENED_LENGTH) -> str:
