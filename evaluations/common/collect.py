@@ -40,6 +40,7 @@ def standard(env: Environment, context: RunContext, result: CapabilityResult, ba
         "since": baseline.since,
         "out": f"{WORK}/out",
         "check_directory": result.record_directory,
+        "session_id": result.outcome.get("session_id"),
         "sessions": home(provider.sessions),
         "logs": [home(path) for path in provider.logs],
     }

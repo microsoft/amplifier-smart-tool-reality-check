@@ -1,9 +1,9 @@
 """Runs inside the evaluation environment after the capability, as root, with the system Python's standard library.
 
 `collect_in_environment.py CONFIG` gathers, into one directory, everything that shows what the agent did: its
-record, its session and logs, every file it made or changed since the baseline, what is installed now, and the
-containers on the nested Docker daemon. `collect.py` on the host imports PACKAGE_LISTS and `installed_diff` from
-here, so the baseline needs no file in the environment.
+record if the capability keeps one, its session and logs, every file it made or changed since the baseline, what is
+installed now, and the containers on the nested Docker daemon. `collect.py` on the host imports PACKAGE_LISTS and
+`installed_diff` from here, so the baseline needs no file in the environment.
 """
 
 import difflib
@@ -55,6 +55,8 @@ def collect(config_path: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     since = float(config["since"])
 
+    session_id = config.get("session_id")
+    session = Path(config["sessions"]) / str(session_id)
     check = config.get("check_directory")
     if check and Path(check).is_dir():
         shutil.copytree(check, out / "check", symlinks=True, ignore=IGNORED_IN_COPIES)
@@ -63,8 +65,8 @@ def collect(config_path: Path) -> None:
         # agent provider keeps its sessions.
         kept = Path(check) / "session"
         session = kept if kept.is_dir() else Path(config["sessions"]) / str(session_id)
-        if session_id and session.is_dir():
-            shutil.copytree(session, out / "session", symlinks=True, ignore=IGNORED_IN_COPIES)
+    if session_id and session.is_dir():
+        shutil.copytree(session, out / "session", symlinks=True, ignore=IGNORED_IN_COPIES)
     for logs in config.get("logs", []):
         if Path(logs).is_dir():
             shutil.copytree(logs, out / "logs" / "harness" / Path(logs).name, symlinks=True)
