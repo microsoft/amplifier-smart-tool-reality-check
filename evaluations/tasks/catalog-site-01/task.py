@@ -43,11 +43,11 @@ def run(context: RunContext) -> None:
         _build_image(context)
     with environment.launch(context, TASK / "environment") as env:
         with context.step("setup"):
-            install.provider_and_reality_check(env, context)
+            install.setup(env, context)
         with context.step("baseline"):
             baseline = collect.baseline(env, context)
         with context.step("capability"):
-            result = capability.check_software(env, context, request=REQUEST, timeout_seconds=TIMEOUT_SECONDS)
+            result = capability.run(env, context, request=REQUEST, timeout_seconds=TIMEOUT_SECONDS)
         with context.step("collect"):
             collect.standard(env, context, result, baseline)
         with context.step("judge"):

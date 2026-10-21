@@ -1,11 +1,12 @@
-"""The evaluations' deterministic parts: tasks, their profiles, the judge, usage totals, and batch scheduling."""
+"""The evaluations' deterministic parts: tasks, their profiles, the judge, usage totals, batches, and baselines."""
 
+import json
 from pathlib import Path
 import threading
 import time
 
-from common import judge, usage
-from common.context import Criterion, EvaluationError, Live, RunContext, RunSpec
+from common import baselines, judge, usage
+from common.context import Capability, Criterion, EvaluationError, Live, RunContext, RunSpec
 from common.environment import PROFILE_PREFIX
 from digital_twin_universe import lib as dtu
 import jsonschema
@@ -13,6 +14,44 @@ import pytest
 import run as runner
 import yaml
 
+COPILOT_OUTPUT = [
+    {"type": "user.message", "data": {"content": "run: echo hello"}, "timestamp": "2026-01-01T00:00:00.000Z"},
+    {"type": "assistant.message", "data": {"content": ""}, "timestamp": "2026-01-01T00:00:02.000Z"},
+    {"type": "assistant.message", "data": {"content": "hello"}, "timestamp": "2026-01-01T00:00:04.700Z"},
+    {"type": "result", "timestamp": "2026-01-01T00:00:04.700Z", "sessionId": "session-1", "exitCode": 0},
+]
+COPILOT_USAGE_RECORDS = [
+    {
+        "type": "session.usage_record",
+        "data": {
+            "usage": {
+                "model": "m",
+                "inputTokens": 100,
+                "outputTokens": 10,
+                "cacheReadTokens": 60,
+                "cacheWriteTokens": 40,
+                "reasoningTokens": 0,
+                "cost": 1.0,
+                "copilotUsage": {"totalNanoAiu": 1500000000},
+            }
+        },
+    },
+    {
+        "type": "session.usage_record",
+        "data": {
+            "usage": {
+                "model": "m",
+                "inputTokens": 200,
+                "outputTokens": 5,
+                "cacheReadTokens": 150,
+                "cacheWriteTokens": 50,
+                "reasoningTokens": 0,
+                "cost": 1.0,
+                "copilotUsage": {"totalNanoAiu": 250000000},
+            }
+        },
+    },
+]
 RUBRIC = {
     "found-the-defect": Criterion(weight=4, description="Found it."),
     "evidence": Criterion(weight=3, description="Showed it."),
@@ -77,6 +116,7 @@ def test_the_judge_prompt_carries_the_answer_key_every_criterion_and_every_mater
     expected = tmp_path / "expected.md"
     expected.write_text("The arrow jumps.\n", encoding="utf-8")
     materials = {"The orders table": "/var/lib/evaluation/orders.json", "The server": "ssh home-server-2"}
+    where = {"Its record of the run": "/p/record"}
 
     prompt = judge.render(
         judge.DEFAULT_PROMPT,
@@ -85,14 +125,37 @@ def test_the_judge_prompt_carries_the_answer_key_every_criterion_and_every_mater
         expected=expected,
         rubric=RUBRIC,
         report="/p/r.md",
-        record="/p/record",
+        where=where,
         materials=materials,
+        dtu="/bin/dtu",
     )
 
     assert "The arrow jumps." in prompt
     assert all(f"`{name}`" in prompt for name in RUBRIC)
-    assert all(f"- {label}: `{path}`" in prompt for label, path in materials.items())
+    assert all(f"- {label}: `{path}`" in prompt for label, path in (where | materials).items())
+    assert "`/p/r.md`" in prompt
+    assert "`/bin/dtu`" in prompt
     assert "$" not in prompt
+
+
+def test_the_judge_prompt_names_no_capability_s_own_files(tmp_path: Path) -> None:
+    expected = tmp_path / "expected.md"
+    expected.write_text("The arrow jumps.\n", encoding="utf-8")
+
+    prompt = judge.render(
+        judge.DEFAULT_PROMPT,
+        request="Check it.",
+        target=None,
+        expected=expected,
+        rubric=RUBRIC,
+        report="/var/lib/evaluation/report.md",
+        where={},
+        materials={},
+        dtu="/bin/dtu",
+    )
+
+    assert "check.json" not in prompt
+    assert "evidence/" not in prompt
 
 
 def test_usage_sums_tokens_and_the_provider_s_cost_by_model() -> None:
@@ -127,9 +190,10 @@ def test_usage_sums_a_cost_reported_in_dollars() -> None:
     assert "multiplier" not in summary["by_model"]["m"]
 
 
-def _spec(task: str, repeat: int) -> RunSpec:
+def _spec(task: str, repeat: int, capability: Capability = "reality-check") -> RunSpec:
     return RunSpec(
         task=task,
+        capability=capability,
         agent_provider="copilot",
         model="m",
         reasoning_effort="medium",
@@ -159,7 +223,7 @@ def test_runs_of_different_tasks_overlap_and_runs_of_one_task_do_not(tmp_path: P
 
     specs = [_spec(name, repeat) for name in ("a", "b", "c") for repeat in (1, 2)]
 
-    records = runner.run_batch(tmp_path, {"a": stub("a"), "b": stub("b"), "c": failing}, specs, 1, Live())
+    records = runner.run_batch(tmp_path, {"a": stub("a"), "b": stub("b"), "c": failing}, specs, 1, None, Live())
 
     for name in ("a", "b"):
         first, second = sorted(spans[name])
@@ -172,3 +236,89 @@ def test_runs_of_different_tasks_overlap_and_runs_of_one_task_do_not(tmp_path: P
     assert all(record.status == "failed" and record.error == "EvaluationError: broken" for record in failed)
     assert all((tmp_path / record.run_id / "logs" / "harness-error.txt").is_file() for record in failed)
     assert (tmp_path / "batch.json").is_file()
+
+
+def test_max_parallel_caps_the_runs_of_the_whole_batch(tmp_path: Path) -> None:
+    running = 0
+    most = 0
+    lock = threading.Lock()
+
+    def run(context: RunContext) -> None:
+        nonlocal running, most
+        with lock:
+            running += 1
+            most = max(most, running)
+        time.sleep(0.1)
+        with lock:
+            running -= 1
+
+    names = ("a", "b", "c", "d")
+    specs = [_spec(name, repeat) for name in names for repeat in (1, 2)]
+
+    records = runner.run_batch(tmp_path, dict.fromkeys(names, run), specs, 2, 3, Live())
+
+    assert most == 3
+    assert {record.status for record in records.values()} == {"completed"}
+    assert len(records) == 8
+
+
+def test_a_baseline_run_s_directory_names_its_capability_and_a_reality_check_run_s_does_not() -> None:
+    assert runner.run_name(_spec("excalidraw-01", 2)) == "excalidraw-01-copilot-m-2"
+    assert runner.run_name(_spec("excalidraw-01", 2, "baseline")) == "excalidraw-01-baseline-copilot-m-2"
+
+
+def test_a_batch_skips_the_tasks_that_do_not_support_its_capability() -> None:
+    tasks = {name: runner.load_task(name) for name in ("desktop-app-03", "excalidraw-01")}
+
+    baseline, skipped = runner.supporting(tasks, "baseline")
+    reality_check, none = runner.supporting(tasks, "reality-check")
+
+    assert list(baseline) == ["excalidraw-01"]
+    assert skipped == ["desktop-app-03"]
+    assert list(reality_check) == ["desktop-app-03", "excalidraw-01"]
+    assert none == []
+
+
+def test_the_baseline_is_given_the_request_with_the_target_added() -> None:
+    assert baselines.prompt("Check it.", None) == "Check it."
+    assert baselines.prompt("Check it.", "GitHub Desktop") == "Check it.\n\nTarget: GitHub Desktop"
+
+
+def test_the_baseline_names_the_providers_it_can_run() -> None:
+    with pytest.raises(EvaluationError, match="it runs: copilot"):
+        baselines.baseline("codex")
+
+
+def test_copilot_s_output_reads_into_its_outcome_report_and_time() -> None:
+    copilot = baselines.baseline("copilot")
+
+    reading = copilot.read(COPILOT_OUTPUT, "")
+
+    assert reading.outcome == {"status": "done", "session_id": "session-1"}
+    assert reading.report == "hello"
+    assert reading.seconds == 4.7
+
+
+def test_copilot_output_without_a_result_is_a_failure_with_the_cli_s_error() -> None:
+    copilot = baselines.baseline("copilot")
+    found = COPILOT_OUTPUT[:2]
+
+    reading = copilot.read(found, 'Error: Model "m" from --model flag is not available.\n')
+
+    assert reading.outcome["status"] == "failed"
+    assert reading.outcome["error"] == 'Error: Model "m" from --model flag is not available.'
+    assert reading.report == ""
+
+
+def test_copilot_s_usage_records_sum_like_reality_check_s_usage_events() -> None:
+    copilot = baselines.baseline("copilot")
+
+    records = "".join(json.dumps(record) + "\n" for record in COPILOT_USAGE_RECORDS)
+
+    summary = copilot.read_usage(records + "not json\n")
+
+    assert summary["calls"] == 2
+    assert summary["input_tokens"] == 300
+    assert summary["cache_read_tokens"] == 210
+    assert summary["aiu"] == pytest.approx(1.75)
+    assert summary["by_model"]["m"]["multiplier"] == 1.0

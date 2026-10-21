@@ -37,7 +37,7 @@ def grade(
     `materials` adds lines to the prompt's list of what is on the machine, label to path or note, for what the
     task collected itself.
     """
-    record = result.record_directory or "(the capability left no record)"
+    install.judge_prerequisites(env, context)
     provider = providers.provider(context.spec.judge_agent_provider)
     config = {
         "agent_provider": context.spec.judge_agent_provider,
@@ -52,9 +52,10 @@ def grade(
             target=target,
             expected=expected,
             rubric=rubric,
-            report=f"{record}/report.md",
-            record=record,
+            report=_report(env, context, result),
+            where=result.where,
             materials=materials or {},
+            dtu=install.dtu(context.spec.capability),
         ),
     }
     env.run_checked("judge-work", f"mkdir -p {WORK}/judge")
@@ -93,10 +94,14 @@ def render(
     expected: Path,
     rubric: dict[str, Criterion],
     report: str,
-    record: str,
+    where: dict[str, str],
     materials: dict[str, str],
+    dtu: str,
 ) -> str:
-    """The judge's prompt from the template at `prompt`."""
+    """The judge's prompt from the template at `prompt`.
+
+    `where` is what the capability left besides its report, and `materials` what the task collected, label to path.
+    """
     criteria = "\n".join(
         f"- `{name}` (weight {criterion.weight:g}): {criterion.description}" for name, criterion in rubric.items()
     )
@@ -107,12 +112,27 @@ def render(
         expected=expected.read_text(encoding="utf-8").strip(),
         rubric=criteria,
         report=report,
-        record=record,
+        where=_lines(where),
         session=f"{WORK}/out/session",
         changes=f"{WORK}/out (changes.json, changes/, installed.diff, logs/)",
-        dtu=install.DTU,
-        materials="".join(f"\n- {label}: `{path}`" for label, path in materials.items()),
+        dtu=dtu,
+        materials=_lines(materials),
     )
+
+
+def _lines(entries: dict[str, str]) -> str:
+    return "".join(f"\n- {label}: `{path}`" for label, path in entries.items())
+
+
+def _report(env: Environment, context: RunContext, result: CapabilityResult) -> str:
+    """The report's path in the twin; one only in the run, such as the baseline's last message, is copied there."""
+    if result.report:
+        return result.report
+    report = context.directory / "report.md"
+    if not report.is_file():
+        return "(the agent left no report)"
+    env.push(report, f"{WORK}/report.md")
+    return f"{WORK}/report.md"
 
 
 def schema(rubric: dict[str, Criterion]) -> dict[str, Any]:

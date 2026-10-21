@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 from reality_check.schemas import AgentProvider, ReasoningEffort
 
 RunStatus = Literal["running", "completed", "failed"]
+# reality-check's check-software, or the baseline: the agent provider's own CLI given the same request.
+Capability = Literal["reality-check", "baseline"]
 
 
 class EvaluationError(Exception):
@@ -23,6 +25,7 @@ class RunSpec(BaseModel):
     """What one run evaluates, and with which judge."""
 
     task: str
+    capability: Capability = "reality-check"
     agent_provider: AgentProvider
     model: str
     reasoning_effort: ReasoningEffort

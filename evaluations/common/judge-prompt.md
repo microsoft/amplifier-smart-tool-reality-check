@@ -25,10 +25,9 @@ $rubric
 ## What is on this machine
 
 - The agent's report: `$report`
-- Its record of the run: `$record`. It holds the report, `check.json`, the check's events in `events.jsonl`, the evidence it gathered in `evidence/`, and in `session/` the agent provider's own state, where scripts the agent kept may also be.
-- Its full session, every message and tool call: `$session`. Its event files can run to megabytes.
+- Its full session, every message and tool call, in the agent provider's own format, where scripts the agent kept may also be: `$session`. Its event files can run to megabytes.
 - Every file it made or changed, and what it installed: `$changes`. `changes.json` lists every file and can be long; `changes/` holds copies of the small ones.
-- The project, as it left it: `$project`
+- The project, as it left it: `$project`$where
 - Digital Twin Universe, to launch the task's universe yourself: `$dtu`$materials
 
 Search a large file with grep or a short script rather than opening it whole.

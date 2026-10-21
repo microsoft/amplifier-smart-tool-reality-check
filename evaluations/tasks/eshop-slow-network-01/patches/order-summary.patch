@@ -1,0 +1,165 @@
+diff --git a/src/WebApp/Components/Pages/Checkout/Checkout.razor b/src/WebApp/Components/Pages/Checkout/Checkout.razor
+index b266ec6..f1ef75e 100644
+--- a/src/WebApp/Components/Pages/Checkout/Checkout.razor
++++ b/src/WebApp/Components/Pages/Checkout/Checkout.razor
+@@ -2,6 +2,7 @@
+ @using System.Globalization
+ @using System.ComponentModel.DataAnnotations
+ @inject BasketState Basket
++@inject CatalogService Catalog
+ @inject NavigationManager Nav
+ @attribute [Authorize]
+ 
+@@ -50,6 +51,21 @@
+                     </label>
+                 </div>
+             </div>
++            <div class="form-section">
++                <h2>Order summary</h2>
++                <ul class="checkout-summary">
++                    @for (var i = 0; i < Info.Lines.Count; i++)
++                    {
++                        var line = Info.Lines[i];
++                        <li>
++                            <input type="hidden" name="Info.Lines[@i].ProductId" value="@line.ProductId" />
++                            <input type="hidden" name="Info.Lines[@i].Quantity" value="@line.Quantity" />
++                            <span>@line.Quantity x @line.ProductName</span>
++                            <span>$@((line.UnitPrice * line.Quantity).ToPriceDisplay())</span>
++                        </li>
++                    }
++                </ul>
++            </div>
+             <div class="form-section">
+                 <div class="form-buttons">
+                     <a href="cart" class="button button-secondary"><img role="presentation" src="icons/arrow-left.svg" />Back to the shopping bag</a>
+@@ -71,15 +87,36 @@
+     [CascadingParameter]
+     public HttpContext HttpContext { get; set; } = default!;
+ 
+-    protected override void OnInitialized()
++    protected override async Task OnInitializedAsync()
+     {
+-        if (Info is null)
++        var isNewForm = Info is null;
++        if (isNewForm)
+         {
+             PopulateFormWithDefaultInfo();
+         }
+ 
+         editContext = new EditContext(Info!);
+         extraMessages = new ValidationMessageStore(editContext);
++
++        if (isNewForm)
++        {
++            Info!.Lines = (await Basket.GetBasketItemsAsync())
++                .Select(i => new CheckoutLine { ProductId = i.ProductId, ProductName = i.ProductName, UnitPrice = i.UnitPrice, Quantity = i.Quantity })
++                .ToList();
++        }
++        else if (Info!.Lines.Count > 0)
++        {
++            // Only the product and quantity of each line are posted back, so the summary is refilled from the catalog
++            var catalogItems = (await Catalog.GetCatalogItems(Info.Lines.Select(l => l.ProductId))).ToDictionary(c => c.Id);
++            foreach (var line in Info.Lines)
++            {
++                if (catalogItems.TryGetValue(line.ProductId, out var item))
++                {
++                    line.ProductName = item.Name;
++                    line.UnitPrice = item.Price;
++                }
++            }
++        }
+     }
+ 
+     private void PopulateFormWithDefaultInfo()
+@@ -100,7 +137,7 @@
+ 
+     private async Task HandleSubmitAsync()
+     {
+-        await PerformCustomValidationAsync();
++        PerformCustomValidation();
+ 
+         if (editContext.Validate())
+         {
+@@ -115,11 +152,11 @@
+         Nav.NavigateTo("user/orders");
+     }
+ 
+-    private async Task PerformCustomValidationAsync()
++    private void PerformCustomValidation()
+     {
+         extraMessages.Clear();
+ 
+-        if ((await Basket.GetBasketItemsAsync()).Count == 0)
++        if (Info.Lines.Count == 0)
+         {
+             extraMessages.Add(new FieldIdentifier(Info, ""), "Your cart is empty");
+         }
+diff --git a/src/WebApp/Components/Pages/Checkout/Checkout.razor.css b/src/WebApp/Components/Pages/Checkout/Checkout.razor.css
+index 6b6821d..1f2971a 100644
+--- a/src/WebApp/Components/Pages/Checkout/Checkout.razor.css
++++ b/src/WebApp/Components/Pages/Checkout/Checkout.razor.css
+@@ -106,3 +106,19 @@
+         align-items: stretch;
+     }
+ }
++
++.checkout-summary {
++    list-style: none;
++    margin: 0;
++    padding: 0;
++    display: flex;
++    flex-direction: column;
++    gap: 0.5rem;
++}
++
++.checkout-summary li {
++    display: flex;
++    justify-content: space-between;
++    color: var(--color-ink);
++    font-size: var(--text-base);
++}
+diff --git a/src/WebApp/Services/BasketCheckoutInfo.cs b/src/WebApp/Services/BasketCheckoutInfo.cs
+index e1fd8af..40807fb 100644
+--- a/src/WebApp/Services/BasketCheckoutInfo.cs
++++ b/src/WebApp/Services/BasketCheckoutInfo.cs
+@@ -31,4 +31,17 @@ public class BasketCheckoutInfo
+ 
+     public string? Buyer { get; set; }
+     public Guid RequestId { get; set; }
++
++    public List<CheckoutLine> Lines { get; set; } = [];
++}
++
++public class CheckoutLine
++{
++    public int ProductId { get; set; }
++
++    public int Quantity { get; set; }
++
++    public string? ProductName { get; set; }
++
++    public decimal UnitPrice { get; set; }
+ }
+diff --git a/src/WebApp/Services/BasketState.cs b/src/WebApp/Services/BasketState.cs
+index e03b377..cc444f4 100644
+--- a/src/WebApp/Services/BasketState.cs
++++ b/src/WebApp/Services/BasketState.cs
+@@ -85,8 +85,16 @@ public class BasketState(
+         var buyerId = await authenticationStateProvider.GetBuyerIdAsync() ?? throw new InvalidOperationException("User does not have a buyer ID");
+         var userName = await authenticationStateProvider.GetUserNameAsync() ?? throw new InvalidOperationException("User does not have a user name");
+ 
+-        // Get details for the items in the basket
+-        var orderItems = await FetchBasketItemsAsync();
++        // Order exactly the lines the customer reviewed on the checkout page, priced from the catalog
++        var catalogItems = (await catalogService.GetCatalogItems(checkoutInfo.Lines.Select(l => l.ProductId))).ToDictionary(c => c.Id);
++        var orderItems = checkoutInfo.Lines.Select(l => new BasketItem
++        {
++            Id = Guid.NewGuid().ToString(),
++            ProductId = l.ProductId,
++            ProductName = catalogItems[l.ProductId].Name,
++            UnitPrice = catalogItems[l.ProductId].Price,
++            Quantity = l.Quantity,
++        });
+ 
+         // Call into Ordering.API to create the order using those details
+         var request = new CreateOrderRequest(

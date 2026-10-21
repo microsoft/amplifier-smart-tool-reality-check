@@ -17,6 +17,8 @@ DESCRIPTION = (
     "install itself, goes on to drive the app's UI through computer use, and finds the defect, without stopping to "
     "ask the user to install it and without losing the user's uncommitted changes."
 )
+# What it evaluates is reality-check's own install of computer use, which a baseline does not have.
+CAPABILITIES = ("reality-check",)
 REQUEST = (
     "I use GitHub Desktop with my notes-app repo. Can you check that its change management features (reviewing "
     "changes, choosing what to commit, discarding changes, and committing) all work as expected?"
@@ -67,11 +69,11 @@ INSTALLED_DRIVER = "~/.local/share/reality-check/cua-driver/0.36.0/cua-driver"
 def run(context: RunContext) -> None:
     with environment.launch(context, TASK / "environment") as env:
         with context.step("setup"):
-            install.provider_and_reality_check(env, context)
+            install.setup(env, context)
         with context.step("baseline"):
             baseline = collect.baseline(env, context)
         with context.step("capability"):
-            result = capability.check_software(
+            result = capability.run(
                 env, context, request=REQUEST, target=TARGET, timeout_seconds=TIMEOUT_SECONDS, ask_first="when-off"
             )
         with context.step("after"):
