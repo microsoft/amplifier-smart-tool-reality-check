@@ -17,6 +17,7 @@ import sys
 import threading
 from typing import IO, Any, Literal, Protocol
 
+from filelock import Timeout
 import platformdirs
 from pydantic import BaseModel
 import yaml
@@ -39,6 +40,7 @@ from reality_check.capabilities.check_software.constants import (
 from reality_check.capabilities.check_software.intelligence_models import require_allowed
 from reality_check.capabilities.check_software.record import (
     EVENTS,
+    EVIDENCE,
     PROCESS_LOG,
     SESSION,
     alive,
@@ -48,6 +50,7 @@ from reality_check.capabilities.check_software.record import (
     read_events,
     write_record,
 )
+from reality_check.capabilities.check_software.registry import register_project
 from reality_check.capabilities.computer_use.prepare import ComputerUse, NotInstalled, prepare_computer_use
 from reality_check.capabilities.computer_use.target import Unavailable
 from reality_check.core.skill import DISTRIBUTION, skill_directory
@@ -93,7 +96,6 @@ MAX_NAMED_FILES = 20
 # What starts a detached check, given its request on stdin. Tests swap it for a command that fakes the agent.
 BACKGROUND_COMMAND = [sys.executable, "-m", "reality_check.capabilities.check_software.background"]
 IMAGES = "images"
-EVIDENCE = "evidence"
 # The parts of the record the `started` event repeats, so the events alone say what was asked and how.
 STARTED_FIELDS = {
     "request",
@@ -547,6 +549,10 @@ async def check_software(
     intelligence: Intelligence | None = None,
 ) -> CheckRun:
     """Start a check and return its handle once it runs; the work goes on in the background, or in its own process."""
+    # Checks run in the caller's working directory, and a detached check's process inherits it. The registry only
+    # helps find checks later, so a check still runs when it cannot be written.
+    with contextlib.suppress(RealityCheckError, OSError, Timeout):
+        register_project(checks_directory, Path.cwd())
     if not detach:
         return await _start(
             request=request,
@@ -983,6 +989,7 @@ def _prompt(
         ask_first=ASK_FIRST[ask_first],
         keep_running=KEEP_RUNNING[keep_running],
         dtu=_dtu_command(),
+        report_format=(HERE / "report-format.md").read_text(encoding="utf-8"),
     )
 
 
@@ -1005,6 +1012,7 @@ def _resume_prompt(
         computer_use=_computer_use_text(computer_use),
         ask_first=ASK_FIRST[ask_first],
         keep_running=KEEP_RUNNING[keep_running],
+        report_format=(HERE / "report-format.md").read_text(encoding="utf-8"),
     )
 
 

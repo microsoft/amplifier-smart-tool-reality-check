@@ -36,6 +36,12 @@ work wherever the report is read.
   HAR with `record_har_path` and the console with `page.on("console")`; CDP gives the same.
 - CLI: the exact command, its stdout, stderr, and exit code, in one transcript per step; the
   files it wrote when they matter.
+- Terminal UIs, such as editors: run the app in tmux with a UTF-8 locale. After each step that
+  matters, keep the screen from `tmux capture-pane -p -e`, the cursor from
+  `tmux display-message -p '#{cursor_x},#{cursor_y}'`, and the position the app shows, such as a
+  status bar's line and column. An image of the screen must show what the user sees: the cursor,
+  and real glyphs for wide characters and emoji. Take it from a real terminal emulator, such as
+  xterm under Xvfb with CJK and emoji fonts, not from a re-render that drops them.
 - Desktop and mobile: a screenshot or a short screen recording per step, and the app's logs
   (`adb logcat`, `xcrun simctl spawn booted log`, the app's own log file). With computer use,
   the screenshots are `get_window_state`'s `screenshot_out_file`, before and after each checked
@@ -49,6 +55,8 @@ work wherever the report is read.
 - A failure's record shows the moment it happened: the request that returned 500, the console
   error, the screenshot of the wrong state. When a page fails to load, record its URL and the
   error; the browser's error page often screenshots blank.
+- It can show what it is cited for. A screen image that does not draw the cursor is no evidence of
+  where the cursor is; cite a record that does.
 - It is kept as captured: do not merge, rename, or delete evidence files afterwards.
 - Large responses, repeated polling, and slow requests are findings too; keep the record that
   shows them.

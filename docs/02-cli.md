@@ -82,6 +82,44 @@ reality-check read-check-activity --check-id CHECK_ID [--after CURSOR] [--tool-c
 
 `lib.read_check_activity()`, printed as JSON.
 
+## reality-check list-checks
+
+```bash
+reality-check list-checks [--checks-directory PATH]
+```
+
+`lib.list_checks()`, printed as a JSON list. Without `--checks-directory`, every registered project's checks.
+
+## reality-check read-check
+
+```bash
+reality-check read-check --check-id CHECK_ID [--checks-directory .agents/reality-check]
+```
+
+`lib.read_check()`, printed as JSON.
+
+## reality-check app
+
+```bash
+reality-check app [--port N] [--directory PATH]
+```
+
+`lib.app_server(directory).open(port)`. Prints the app's URL, `http://127.0.0.1:<port>`, and serves until Ctrl+C. A free port is chosen when `--port` is omitted; a held one exits 1.
+
+## reality-check mcp
+
+```bash
+reality-check mcp [--directory PATH]
+```
+
+Serves `lib.app_server(directory).server` on stdio, for an MCP client that launches it:
+
+```json
+{ "mcpServers": { "reality-check": { "command": "reality-check", "args": ["mcp"] } } }
+```
+
+It writes only MCP messages to stdout, and exits when the client disconnects.
+
 ## reality-check list-intelligence-models
 
 ```bash

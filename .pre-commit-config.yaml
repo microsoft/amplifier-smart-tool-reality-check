@@ -26,3 +26,34 @@ repos:
         language: system
         types_or: [python, pyi]
         pass_filenames: false
+
+      - id: app-lint
+        name: app eslint
+        entry: uv run build-app.py lint
+        language: system
+        types_or: [ts, tsx, javascript]
+        files: ^app/
+        pass_filenames: false
+
+      - id: app-format
+        name: app prettier
+        entry: uv run build-app.py format
+        language: system
+        types_or: [ts, tsx, javascript, css, html, json, yaml, markdown]
+        files: ^app/
+        pass_filenames: false
+
+      - id: app-typecheck
+        name: app typecheck
+        entry: uv run build-app.py typecheck
+        language: system
+        types_or: [ts, tsx]
+        files: ^app/
+        pass_filenames: false
+
+      - id: app-build
+        name: app build
+        entry: uv run build-app.py build build:view
+        language: system
+        files: ^app/
+        pass_filenames: false

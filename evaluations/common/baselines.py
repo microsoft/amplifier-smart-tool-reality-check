@@ -149,9 +149,7 @@ def _copilot_read(found: list[dict[str, Any]], stderr: str) -> Reading:
     times = [datetime.fromisoformat(event["timestamp"]) for event in found if event.get("timestamp")]
     seconds = round((times[-1] - times[0]).total_seconds(), 1) if len(times) >= 2 else None
     result = next((event for event in reversed(found) if event.get("type") == "result"), None)
-    errors = [
-        (event.get("data") or {}).get("message") for event in found if event.get("type") == "session.error"
-    ]
+    errors = [(event.get("data") or {}).get("message") for event in found if event.get("type") == "session.error"]
     lines = [line for line in stderr.splitlines() if line.strip()]
     error = next((message for message in reversed(errors) if message), None) or (lines[-1] if lines else None)
     if result is None:
@@ -169,7 +167,7 @@ def _copilot_read(found: list[dict[str, Any]], stderr: str) -> Reading:
 
 def _copilot_usage(session_id: str) -> str:
     events = f"~/.copilot/session-state/{shlex.quote(session_id)}/events.jsonl"
-    return f"grep -h '\"type\":\"session.usage_record\"' {events} || true"
+    return f'grep -h \'"type":"session.usage_record"\' {events} || true'
 
 
 def _copilot_read_usage(records: str) -> dict[str, Any]:

@@ -1,12 +1,16 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.4.0
+version: 0.5.0
 description: >-
-  Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding
+  Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do
 use_cases:
-  - >-
-    Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding
+  - Check that a new user can sign up and send a message after a feature or fix, with screenshots, requests, and console messages as evidence
+  - Set up a repository as if it were deployed and check that its main pages load quickly with no console errors
+  - Click through every page and settings submenu and list what is broken or inconsistent
+  - Check an app on another machine from the browser where you are already signed in
+  - Find out why a scripted smoke test fails by seeing what a user would see
+  - Run an earlier check again against a new branch and list what changed
 platforms:
   - linux
   - macos
@@ -61,7 +65,14 @@ wrapper over it, so anything you can do from the shell you can also do from Pyth
 
 ## When to reach for it
 
-- Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding.
+- An agent built a feature or fixed a bug, and someone needs to know that a user can now do the thing. Run a check as the last step, before saying it works.
+- A scripted test fails or is flaky, and it is not clear whether the app, the test, or the environment is at fault.
+- A broad pass over an app: every page, every settings submenu, a new user's first run.
+- A later check against an earlier one, to see what changed.
+
+Not for release gates, CI steps, or the same assertions on each change: scripted tests are
+faster and cheaper there, so say that to the caller instead of starting a check. Not for unit
+tests, load testing, or security testing.
 
 ## Before writing code
 
@@ -132,6 +143,20 @@ bad invocation. Never treat an empty result as success.
 `check-software` runs for minutes: start it with `--detach`, which prints its `started` event
 and exits, then follow it with `read-check-activity` until an `ended` entry. `list-intelligence-models`
 lists the models it runs on.
+
+## After a check
+
+The report is the check's final message, also saved as `report.md` in the check's directory.
+It gives a verdict per item asked about (pass, fail, or not checked) and the evidence files
+each stands on, relative to that directory. Not checked is never a pass. Give the caller the
+verdicts and each failure's step, action, and what was recorded. The report's Next steps section
+guides the calling agent on possible investigation, fixes, and rechecks. Use it within the
+caller's authorized scope; ask before actions that need further approval. After
+a fix, check again with `--resume <check_id>`, the command the result's `next` names.
+
+To find an earlier check without its ID, `list-checks` lists every check on this machine. For the
+person you work for, `reality-check app` shows every check with its report and evidence in their
+browser.
 
 ## Choosing a surface
 

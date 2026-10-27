@@ -40,6 +40,30 @@ CAPABILITIES = (
         skill="capabilities/check_software/skill_read_check_activity.md",
     ),
     Capability(
+        "list-checks",
+        "List every check on this machine, newest first, from every project checks were started from.",
+        model_backed=False,
+        skill="capabilities/check_software/skill_list_checks.md",
+    ),
+    Capability(
+        "read-check",
+        "Read a check as it stands: its record, its report with portable evidence links, and its evidence files.",
+        model_backed=False,
+        skill="capabilities/check_software/skill_read_check.md",
+    ),
+    Capability(
+        "app",
+        "Serve the app in a browser page on this machine, where the person sees every check, its report, and evidence.",
+        model_backed=False,
+        skill="capabilities/app/skill_app.md",
+    ),
+    Capability(
+        "mcp",
+        "Serve the app over stdio as an MCP App, so a session can show it to the person inline or in a browser.",
+        model_backed=False,
+        skill="adapters/skill_mcp.md",
+    ),
+    Capability(
         "list-intelligence-models",
         "List the models a check runs on and the reasoning efforts each takes.",
         model_backed=False,

@@ -1,0 +1,58 @@
+/* The design tokens, with a pastel pink accent. Danger stays the only status hue. Light is the default; lib/theme.ts sets data-theme on the root for the theme in effect. */
+
+:root {
+  --canvas: #e7ecf1;
+  --panel: #ffffff;
+  --raised: #ffffff;
+  --field: #f1f4f7;
+  --hover: #edf1f5;
+  --line: #dfe5eb;
+  --line-control: #7f8994;
+  --ink: #12161c;
+  --ink-muted: #56606b;
+  --ink-faint: #98a1ab;
+  --accent: #f2a7c3;
+  --accent-ink: #a8307a;
+  --accent-soft: #f9e5f2;
+  --on-accent: #12161c;
+  --pastel-blue: #bcdcf7;
+  --pastel-lilac: #d6c8f5;
+  --pastel-rose: #f6c6d3;
+  --pastel-peach: #fbd3bc;
+  --pastel-butter: #f8e6a6;
+  --pastel-mint: #bfe8d5;
+  --pastel-sage: #cfdcc0;
+  --pastel-stone: #d9d6cf;
+  --on-pastel: #12161c;
+  --danger: #c8281c;
+  --danger-soft: #fde8e6;
+  --on-danger: #ffffff;
+  --scrim: #12161c59;
+  --popover-shadow: 0 8px 24px #12161c1f, 0 1px 3px #12161c14;
+  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #12161c;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --canvas: #0c0f13;
+  --panel: #171b21;
+  --raised: #1f242b;
+  --field: #0f1317;
+  --hover: #252b33;
+  --line: #283039;
+  --line-control: #6c7682;
+  --ink: #eef2f6;
+  --ink-muted: #a1abb6;
+  --ink-faint: #5f6873;
+  --accent: #f2a7c3;
+  --accent-ink: #eea8e3;
+  --accent-soft: #44203c;
+  --on-accent: #12161c;
+  --danger: #ff6a5c;
+  --danger-soft: #3f1411;
+  --on-danger: #12161c;
+  --scrim: #000000a6;
+  --popover-shadow: 0 8px 24px #000000b3, 0 0 0 1px #283039;
+  --focus-ring: 0 0 0 2px #171b21, 0 0 0 4px #eef2f6;
+  color-scheme: dark;
+}

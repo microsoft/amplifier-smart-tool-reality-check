@@ -40,9 +40,4 @@ In the report, for each item the request asks about:
 - for a failure: the step, the action, and what the record shows at that time, such as "Step 2 (click Send): POST /api/chat returned 500, TypeError in console"
 - a cause only when a test rules out the other causes; otherwise call it a hypothesis. State facts about the environment only after you check them.
 
-Then:
-
-- what you checked and what you did not, against every item the request asked about
-- anything that seemed off, even outside the request
-- what you started, what you stopped, and anything left running with the command that stops it
-- next steps for each failure, as a short prompt the caller can give their agent, which confirms with the user before it acts
+$report_format

@@ -106,6 +106,7 @@ async def test_a_check_streams_its_events_and_ends_with_the_agent_s_report(works
     assert f"saved as `{run.directory / 'report.md'}`" in request.prompt
     assert request.mcp_servers == {}
     assert check._dtu_command() in request.prompt
+    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.prompt
     skills = {path.name for directory in request.skill_directories for path in directory.iterdir()}
     assert skills == {
         "reaching-software",
@@ -218,6 +219,7 @@ async def test_resume_continues_the_session_on_the_same_agent_provider(tmp_path:
     assert request.resume == SESSION
     assert "<request>\nGo on.\n</request>" in request.prompt
     assert "your final message is the report" in request.prompt
+    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.prompt
     assert f"Put every piece of evidence in `{second.directory / 'evidence'}`." in request.prompt
     assert f"before this request is in `{first.directory / 'evidence'}`" in request.prompt
     assert f"`../{first.check_id}/evidence/01-open-home.png`" in request.prompt

@@ -16,6 +16,8 @@ RECORD = "check.json"
 PROCESS_LOG = "process.log"
 # The agent provider's own state for this check's session, opaque to everything but that provider's implementation.
 SESSION = "session"
+EVIDENCE = "evidence"
+REPORT = "report.md"
 CHECK_ID_PATTERN = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
 # Windows refuses to replace a file another process has open, such as a reader of check.json, and to open one being
 # replaced; both are brief.
