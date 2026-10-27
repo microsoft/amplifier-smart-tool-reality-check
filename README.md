@@ -9,25 +9,15 @@ Use it from the agent you already work in, such as Amplifier, Copilot, Codex, or
 
 ## Quickstart
 
-Prerequisites:
-- [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- At least one agent provider to run checks:
-  - `copilot`: [GitHub CLI](https://cli.github.com/) signed in to an account with a [GitHub Copilot subscription](https://github.com/github/copilot-cli#prerequisites).
-  - `amplifier-agent`: the model provider's credentials, for instance `OPENAI_API_KEY` for the default `openai/...` models. See [providers](https://github.com/microsoft/amplifier-agent/blob/v0.23.1/docs/providers.md).
-  - `codex`: the [Codex CLI](https://github.com/openai/codex) signed in with ChatGPT or an API key. See [authentication](https://developers.openai.com/codex/auth).
-  - `claude`: `ANTHROPIC_API_KEY`, or any of its other supported modes of [authentication](https://code.claude.com/docs/en/agent-sdk/quickstart).
+1. Ask your agent:
 
-1. Install the skill that teaches your agent to use Reality Check:
-
-   ```bash
-   npx skills add microsoft/amplifier-smart-tool-reality-check
-   ```
+   > Install https://github.com/microsoft/amplifier-smart-tool-reality-check and its agent skill.
 
 1. Work as usual. When your agent finishes something, it can call Reality Check itself, or you can ask:
 
-   > I fixed the bug in issue #412 where saving a draft loses the attachments. Check that it is fixed and that nothing near it broke.
+   > My app is running locally. Check that a new user can sign up and send a message.
 
-   > My app runs at http://localhost:3000. Check that a new user can sign up and send a message.
+   > I fixed the bug in issue #412 where saving a draft loses the attachments. Check that it is fixed and that nothing near it broke.
 
    > Set up this repository as if it were deployed, and check that the dashboard loads in under three seconds with no console errors.
 
@@ -35,6 +25,18 @@ Prerequisites:
 
 1. Get back a report that says what was checked, what passed, and what failed, with screenshots and other evidence for each finding.
    Your agent reads it and suggests what to do next. Ask it before it makes changes. Each check is saved in `.agents/reality-check` by default, so you can come back to it later.
+
+Use it after your agent builds a feature or fixes a bug, or when a scripted test fails and you cannot tell why. It does not replace unit tests, and it is not a release gate or a CI step: a check takes minutes, so keep scripted tests for those.
+
+For manual setup, see [Installation](#installation).
+
+## See your checks
+
+```bash
+reality-check app
+```
+
+Opens every check on your machine, from every project, in your browser: what is running now, each report with its screenshots and other evidence, and what the check's agent did. The app only shows checks; your agent starts and steers them.
 
 ## Command line
 
@@ -50,7 +52,12 @@ reality-check cancel-check --check-id CHECK_ID
 # Continue a previous check, for instance after a new fix
 reality-check check-software --request "Check it again" --resume CHECK_ID
 
+# Find earlier checks, from every project, and read one
+reality-check list-checks
+reality-check read-check --check-id CHECK_ID
+
 # Other
+reality-check app   # or mcp, to serve it to an MCP client
 reality-check list-intelligence-models
 reality-check reaching-software-skill # or using-software-skill, using-computer-use-skill, gathering-evidence-skill
 reality-check install-computer-use
@@ -60,11 +67,21 @@ See the [CLI reference](docs/02-cli.md) for every flag and the [library referenc
 
 ## Installation
 
+Prerequisites:
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- At least one agent provider to run checks:
+  - `copilot`: [GitHub CLI](https://cli.github.com/) signed in to an account with a [GitHub Copilot subscription](https://github.com/github/copilot-cli#prerequisites).
+  - `amplifier-agent`: the model provider's credentials, for instance `OPENAI_API_KEY` for the default `openai/...` models. See [providers](https://github.com/microsoft/amplifier-agent/blob/v0.23.1/docs/providers.md).
+  - `codex`: the [Codex CLI](https://github.com/openai/codex) signed in with ChatGPT or an API key. See [authentication](https://developers.openai.com/codex/auth).
+  - `claude`: `ANTHROPIC_API_KEY`, or any of its other supported modes of [authentication](https://code.claude.com/docs/en/agent-sdk/quickstart).
+
 (Optional) Install the Smart Tools skill so your agent knows about Smart Tools: `npx skills add microsoft/amplifier-smart-tools`
 
-To install the CLI yourself:
+To install manually:
 
 ```bash
+# Install the Agent Skill so your agent knows about it.
+npx skills add microsoft/amplifier-smart-tool-reality-check
 # Choose the provider(s) you want: [all], [copilot], [amplifier-agent], [codex], or [claude]
 uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
 ```

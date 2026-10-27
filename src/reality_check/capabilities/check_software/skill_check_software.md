@@ -4,6 +4,14 @@ and timings, and ends with a Markdown report: a verdict per item asked about, wi
 files each one stands on. A check runs for minutes. It streams events while it works, can be
 steered or cancelled from any process, and can be resumed with a follow-up.
 
+The report starts with a short summary, then Needs attention, Observations, What was checked,
+Next steps, and Run details. Relevant screenshots are embedded beside findings. Next steps
+guide the calling agent on possible actions and rechecks, within the caller's authorized scope.
+
+Use it to check a feature or fix as a user would, or to find out why a scripted test fails. Do
+not use it as a release gate or a CI step, or to run the same assertions again on each change.
+Scripted tests are faster and cheaper there. Say that to the caller instead of starting a check.
+
 A check runs longer than most shell timeouts, so start it with `--detach`: it runs in a process of
 its own, and the command prints the `started` event and exits. Follow it with `read-check-activity`:
 

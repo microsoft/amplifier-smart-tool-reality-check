@@ -320,6 +320,71 @@ class CheckActivity(BaseModel):
     cursor: int = Field(description="Pass as `after` to read only what comes next")
 
 
+class Project(BaseModel):
+    """A directory checks were started from, and the checks directory they are kept in."""
+
+    root: Path
+    checks_directory: Path
+
+
+class CheckReference(BaseModel):
+    """A check another check continues or builds on."""
+
+    check_id: str
+    checks_directory: Path
+
+
+class CheckSummary(BaseModel):
+    """One check, as a list of checks shows it."""
+
+    check_id: str
+    project: Project
+    request: str
+    target: str | None
+    state: CheckState
+    started_at: datetime
+    ended_at: datetime | None
+    agent_provider: AgentProvider
+    model: str
+    origin: str
+    resume: str | None = Field(description="The check this one continues, in the same checks directory")
+    has_report: bool
+
+
+class EvidenceEntry(BaseModel):
+    """One file a check saved as evidence."""
+
+    path: str = Field(description="Relative to the check's directory, such as `evidence/01-home.png`")
+    media_type: str
+    size: int
+    modified_at: datetime
+    referenced: bool = Field(description="Whether the report cites it")
+
+
+class CheckDetail(BaseModel):
+    """A check as it stands: its record, its report, and the evidence it has saved so far."""
+
+    check: CheckRecord
+    state: CheckState
+    project: Project
+    directory: Path
+    report: str | None = Field(
+        description="The report, with every path into this check's evidence folder written as `evidence/<name>`; None "
+        "until the check writes one"
+    )
+    evidence: list[EvidenceEntry]
+    resumes: CheckReference | None
+    previous_checks: list[CheckReference]
+
+
+class EvidenceFile(BaseModel):
+    """One evidence file's content."""
+
+    path: str
+    media_type: str = Field(description="text/plain for HTML and SVG, so a viewer never runs them")
+    content: bytes
+
+
 # endregion
 
 # region: Computer use

@@ -107,6 +107,11 @@ A check stopped at its deadline often has no report, so set `timeout_seconds` ge
 
 A report that says the software failed is a result, not an exception.
 
+Reports are Markdown with a short summary and five sections: Needs attention, Observations,
+What was checked, Next steps, and Run details. Screenshots can be embedded beside findings.
+Next steps guide the calling agent on possible investigation, fixes, and rechecks; they do not
+authorize actions outside the caller's scope.
+
 ### The check's directory
 
 ```
@@ -136,6 +141,56 @@ def read_check_activity(
 
 `CheckActivity` holds the `CheckRecord`, the `state` (`running`, `crashed`, `done`, `cancelled`, `timed-out`, or `failed`), the `process_log` path when there is one, the `entries`, and the `cursor` to pass as `after`. Each `ActivityEntry` has a time, a `kind` (`request`, `said`, `reasoning`, `tool`, `tool-result`, `usage`, `steered`, `ended`), its text, the `origin` of a request or steering, and data.
 Raises `check-not-found`, `bad-cursor`, and `tool-call-not-found`.
+
+## List checks
+
+Every check on this machine, newest first. Deterministic.
+
+```python
+def list_checks(checks_directory: Path | None = None) -> list[CheckSummary]
+```
+
+Checks are kept in the project they were started from, so nothing else knows where they all are. `check_software` adds each project to a registry, `~/.agents/reality-check/projects.json`, before the check starts: its `root`, the working directory, and its absolute `checks_directory`, once each. One file lock covers each read and write, since many checks start at once. A registry that cannot be written does not stop a check.
+
+With `checks_directory` None, `list_checks` reads every registered project; given one, only that directory. Each `CheckSummary` has the check's ID, `project`, request, target, `state` (as `read_check_activity` gives it), start and end times, agent provider, model, `origin`, the check it `resume`s, and `has_report`. A state says how the check ran, not what it found.
+Raises `bad-registry` when the registry is not a list of projects.
+
+## Read check
+
+A check as it stands, running or ended: its record, its report, and the evidence it has saved so far. Deterministic.
+
+```python
+def read_check(check_id: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> CheckDetail
+```
+
+Agents cite evidence by absolute paths, paths relative to where the check ran, and bare file names. `CheckDetail.report` writes every path into the check's `evidence/` as `evidence/<name>`, so its links work from the check's directory; `report.md` is left as written. Each `EvidenceEntry` has its `path`, `media_type`, `size`, `modified_at`, and whether the report cites it, by path or by name. `resumes` and `previous_checks` name the checks this one builds on.
+A `report.md` that is a link is not read. Raises `check-not-found`.
+
+```python
+def read_check_evidence(check_id: str, path: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> EvidenceFile
+```
+
+One file from the check's `evidence/`, for a viewer such as the app. It reads only regular files reached through no link or junction, opened once without following a link, up to 50 MB. HTML, SVG, and other types a viewer would run come back as `text/plain`. It has no CLI command; an agent reads the files at the paths `read_check` gives.
+Raises `not-evidence` and `evidence-too-large`.
+
+## App
+
+The app shows every check from `list_checks` to a person: its report with evidence that opens in place, what its agent did, and its details. It only reads checks; agents start, steer, and cancel them. Deterministic.
+
+```python
+def app_server(directory: Path | None = None) -> AppServer
+def app_view() -> str
+```
+
+`app_server` returns the app's MCP server. Serve `AppServer.server` over any MCP transport; `AppServer.open(port)` serves a browser page on `127.0.0.1` that hosts the view and reaches the same server at its own `/mcp`, with the view in a sandbox on a second port. `directory` adds a checks directory to the registry and opens the app on its newest check. `app_view` is the view's HTML, an [MCP App](https://github.com/modelcontextprotocol/ext-apps) resource at `ui://reality-check/app`.
+
+The server's tools:
+
+- `open_app`, which a model sees: shows the app, opened on a check when given its ID.
+- `list_checks`, `read_check`, `read_check_activity`, and `open_check_folder`, which only the view sees, listed with `visibility: ["app"]` to hosts that render MCP Apps. They read only registered checks directories. `open_check_folder` shows a check's folder in Explorer, Finder, or what `xdg-open` picks; under WSL, Windows Explorer.
+
+Evidence reaches the view through `read_check_evidence` as the resource `reality-check://checks/{checks_directory}/{check_id}/{+path}`.
+Raises `app-not-built` when the package has no built view, and `port-held` when the port is taken.
 
 ## List intelligence models
 

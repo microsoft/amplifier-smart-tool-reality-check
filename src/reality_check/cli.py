@@ -3,12 +3,16 @@
 import asyncio
 from collections.abc import Callable, Coroutine, Iterator
 import contextlib
+import io
 import json
 from pathlib import Path
 import signal
+import sys
+import time
 from types import FrameType
 from typing import Annotated, Any
 
+from pydantic import TypeAdapter
 import typer
 
 # Typer 0.27 vendors Click, so a command that overrides Click's own hooks has to speak the vendored types.
@@ -17,6 +21,7 @@ from typer.core import TyperCommand, TyperOption
 from typer.models import CommandFunctionType
 
 from reality_check import lib
+from reality_check.adapters import mcp as mcp_adapter
 from reality_check.core.skill import DISTRIBUTION
 from reality_check.schemas import (
     DEFAULT_CHECKS_DIRECTORY,
@@ -25,6 +30,7 @@ from reality_check.schemas import (
     AgentProvider,
     AskFirst,
     CheckEvent,
+    CheckSummary,
     RealityCheckError,
     ReasoningEffort,
 )
@@ -236,6 +242,66 @@ def read_check_activity(
 
 
 @app.command()
+def list_checks(
+    checks_directory: Annotated[
+        Path | None,
+        typer.Option("--checks-directory", help="Only the checks kept here; every project's when left out."),
+    ] = None,
+) -> None:
+    """Print every check, newest first, as JSON. Deterministic."""
+    typer.echo(TypeAdapter(list[CheckSummary]).dump_json(lib.list_checks(checks_directory=checks_directory), indent=2))
+
+
+@app.command()
+def read_check(
+    check_id: Annotated[str, typer.Option("--check-id", help="The check, running or ended.")],
+    checks_directory: Annotated[
+        Path, typer.Option("--checks-directory", help="Where checks are kept.")
+    ] = DEFAULT_CHECKS_DIRECTORY,
+) -> None:
+    """Print a check with its report and evidence, as JSON. Deterministic."""
+    typer.echo(lib.read_check(check_id=check_id, checks_directory=checks_directory).model_dump_json(indent=2))
+
+
+@app.command("app")
+def app_(
+    port: Annotated[
+        int | None, typer.Option("--port", help="The port to bind; a free one is chosen when omitted.")
+    ] = None,
+    directory: Annotated[
+        Path | None,
+        typer.Option("--directory", help="A checks directory to add to the app's projects and open on."),
+    ] = None,
+) -> None:
+    """Serve the app in a browser page on this machine and print its URL. Deterministic.
+
+    It shows every check on this machine. Keeps serving until Ctrl+C. Exits 1 with the cause and remedy when the port
+    is held.
+    """
+    app_server = lib.app_server(directory=directory)
+    typer.echo(app_server.open(port).url)
+    with contextlib.suppress(KeyboardInterrupt):
+        while True:
+            time.sleep(1)
+    app_server.close()
+
+
+@app.command()
+def mcp(
+    directory: Annotated[
+        Path | None,
+        typer.Option("--directory", help="A checks directory to add to the app's projects and open on."),
+    ] = None,
+) -> None:
+    """Serve the app's MCP server on stdio, with the app as an MCP App. Deterministic.
+
+    For MCP clients that launch the server themselves. Reads and writes MCP messages on stdin and stdout until the
+    client disconnects; prints nothing else to stdout.
+    """
+    mcp_adapter.run_stdio(directory)
+
+
+@app.command()
 def list_intelligence_models() -> None:
     """Print the models a check runs on and their reasoning efforts, as JSON. Deterministic."""
     typer.echo(lib.list_intelligence_models().model_dump_json(indent=2))
@@ -325,6 +391,10 @@ def _cancelled_by_signals(run: lib.CheckRun) -> Iterator[None]:
 
 
 def main() -> int:
+    # A pipe on Windows defaults to the ANSI code page, which cannot encode much of what a check records.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
     try:
         app()
     except RealityCheckError as error:

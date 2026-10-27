@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-from reality_check.capabilities.check_software import activity, check, intelligence_models
+from reality_check.capabilities.app import folders as app_folders
+from reality_check.capabilities.app import mcp_server as app_server_module
+from reality_check.capabilities.app import server as app_module
+from reality_check.capabilities.app.mcp_server import AppServer
+from reality_check.capabilities.check_software import activity, check, checks, intelligence_models, registry
 from reality_check.capabilities.check_software.check import CheckRun
 from reality_check.capabilities.computer_use import install
 from reality_check.core import manifest
@@ -15,22 +19,30 @@ from reality_check.schemas import (
     AgentProvider,
     AskFirst,
     CheckActivity,
+    CheckDetail,
     CheckEvent,
+    CheckReference,
     CheckResult,
+    CheckSummary,
     CheckTimeoutError,
     ComputerUseInstall,
+    EvidenceFile,
     IntelligenceModels,
     Manifest,
     ReasoningEffort,
 )
 
 __all__ = [
+    "AppServer",
     "CheckActivity",
+    "CheckDetail",
     "CheckEvent",
     "CheckResult",
     "CheckRun",
+    "CheckSummary",
     "CheckTimeoutError",
     "ComputerUseInstall",
+    "EvidenceFile",
     "IntelligenceModels",
 ]
 
@@ -113,6 +125,59 @@ def read_check_activity(
     return activity.read_check_activity(
         check_id=check_id, after=after, tool_call_id=tool_call_id, checks_directory=checks_directory
     )
+
+
+def list_checks(checks_directory: Path | None = None) -> list[CheckSummary]:
+    """Every check on this machine, newest first, from every project checks were started from; or one checks directory's."""
+    return checks.list_checks(checks_directory=checks_directory)
+
+
+def read_check(check_id: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> CheckDetail:
+    """A check as it stands: its record, its report with evidence links that work from anywhere, and its evidence."""
+    return checks.read_check(check_id=check_id, checks_directory=checks_directory)
+
+
+def read_check_evidence(check_id: str, path: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTORY) -> EvidenceFile:
+    """One file from a check's evidence folder, as `read_check` lists it; nothing outside that folder is read."""
+    return checks.read_check_evidence(check_id=check_id, path=path, checks_directory=checks_directory)
+
+
+def app_server(directory: Path | None = None) -> AppServer:
+    """The app's MCP server: the tool that opens the app, the tools its view calls, and the view as an MCP App.
+
+    Serve `AppServer.server` over any MCP transport. `AppServer.open` serves the browser host page, which renders the
+    view for agents that cannot embed it and reaches the same server at its own `/mcp`. The view shows every check on
+    this machine and only reads them.
+
+    Args:
+        directory: A checks directory to add to the projects the app shows, and to open on its newest check.
+    """
+    focus = None
+    if directory is not None:
+        project = registry.register_project(directory)
+        newest = checks.list_checks(project.checks_directory)
+        if newest:
+            focus = CheckReference(check_id=newest[0].check_id, checks_directory=project.checks_directory)
+    return app_server_module.AppServer(
+        skill_module.DISTRIBUTION,
+        version(),
+        focus,
+        list_checks=checks.list_checks,
+        read_check=lambda check_id, checks_directory: checks.read_check(check_id, checks_directory),
+        read_check_activity=lambda check_id, after, tool_call_id, checks_directory: activity.read_check_activity(
+            check_id=check_id, after=after, tool_call_id=tool_call_id, checks_directory=checks_directory
+        ),
+        read_check_evidence=checks.read_check_evidence,
+        can_open_folders=app_folders.can_open_folders,
+        open_folder=app_folders.open_folder,
+        register_project=registry.register_project,
+        registered_projects=registry.registered_projects,
+    )
+
+
+def app_view() -> str:
+    """The app's view, an MCP App: the HTML a host renders inline, and the one the browser host page renders."""
+    return app_module.view()
 
 
 def list_intelligence_models() -> IntelligenceModels:

@@ -1,0 +1,209 @@
+@import "tailwindcss";
+@import "./theme.css";
+
+/* Inlined into the view, which hosts load as one file with no network. */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/Geist-Variable.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/GeistMono-Variable.woff2") format("woff2-variations");
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Tailwind's own palette, sizes, radii, and shadows are cleared, so a class can only name a token. */
+@theme {
+  --color-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --font-*: initial;
+
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, Menlo, monospace;
+
+  --text-display: 28px;
+  --text-display--line-height: 32px;
+  --text-display--letter-spacing: -0.02em;
+  --text-display--font-weight: 600;
+  --text-title: 16px;
+  --text-title--line-height: 22px;
+  --text-title--letter-spacing: -0.01em;
+  --text-title--font-weight: 600;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-label--font-weight: 500;
+  --text-caption: 11px;
+  --text-caption--line-height: 14px;
+  --text-caption--letter-spacing: 0.01em;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 16px;
+
+  --default-transition-duration: 100ms;
+  --default-transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+
+  --animate-build: build 1.6s infinite steps(1, end);
+  --animate-slide: slide 1.6s ease-in-out infinite;
+
+  /* Four layers stack up from the bottom, hold, and start over, so each cycle ends as the plain brand square. */
+  @keyframes build {
+    0% {
+      transform: scaleY(0);
+    }
+    15% {
+      transform: scaleY(0.25);
+    }
+    30% {
+      transform: scaleY(0.5);
+    }
+    45% {
+      transform: scaleY(0.75);
+    }
+    60%,
+    92% {
+      transform: scaleY(1);
+    }
+    100% {
+      transform: scaleY(0);
+    }
+  }
+
+  @keyframes slide {
+    from {
+      left: -32%;
+    }
+    to {
+      left: 100%;
+    }
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-field: var(--field);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-control: var(--line-control);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-pastel-blue: var(--pastel-blue);
+  --color-pastel-lilac: var(--pastel-lilac);
+  --color-pastel-rose: var(--pastel-rose);
+  --color-pastel-peach: var(--pastel-peach);
+  --color-pastel-butter: var(--pastel-butter);
+  --color-pastel-mint: var(--pastel-mint);
+  --color-pastel-sage: var(--pastel-sage);
+  --color-pastel-stone: var(--pastel-stone);
+  --color-on-pastel: var(--on-pastel);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-on-danger: var(--on-danger);
+  --color-scrim: var(--scrim);
+  --shadow-popover: var(--popover-shadow);
+}
+
+/* Anything you could type into a field: names, paths, commands, sizes. */
+@utility mono-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Durations, counts, run labels, and other annotations. */
+@utility mono-annotation {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility focus-ring {
+  box-shadow: var(--focus-ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-control) transparent;
+  }
+  html {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background-color: var(--accent-soft);
+    color: var(--ink);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation: none !important;
+      transition-duration: 0s !important;
+    }
+  }
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes flash {
+  0%,
+  60% {
+    box-shadow: inset 0 0 0 2px var(--accent-ink);
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}

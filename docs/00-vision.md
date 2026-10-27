@@ -71,6 +71,11 @@ When a check would be stronger with realistic data or a throttled network, it su
 Each result comes with what Reality Check saw: screenshots, requests, console messages, and timings.
 A result that it could not record is marked as such. It is never reported as a pass.
 
+**You can see every check in one place.**
+`reality-check app` shows every check on this machine, past and running, with its report, evidence, and what its agent did.
+In a host that shows MCP Apps, the same view opens in the host.
+The app only shows existing or running checks. Your agent starts, steers, and stops them through the tool.
+
 ## Goals
 
 - There is one main capability that checks an app and returns a verdict for each step, with the evidence for it.
@@ -83,6 +88,7 @@ A result that it could not record is marked as such. It is never reported as a p
 - A later check can be given earlier checks' directories, and the request says how to use them, such as comparing against them.
 - Many checks can run at the same time, from many sessions, without interference. For example, ten agents each fix an issue and check it before they open a PR.
 - The evidence is both a human readable dashboard, but also a structured report for agents with references to images and other pieces of evidence.
+- A user finds any earlier check without knowing its ID or folder, and an agent does the same through the library.
 - A capable agent can use the parts of a check on its own, such as seeing and using the app or reading what was recorded, without asking Reality Check's own agent.
 
 ## Non-Goals
@@ -92,6 +98,8 @@ A result that it could not record is marked as such. It is never reported as a p
 - Load testing at scale, or security testing.
 - Being specific to one product or one harness. Each app is a user of the tool, not a part of it.
 - Managing the caller's machines, SSH keys, or network.
+- Starting or steering checks from the app.
+- Being a deterministic release gate or a CI step. Scripted tests are faster and cheaper there. Reality Check is for checks during development or reusable checks that are intended to run for longer amounts of time.
 
 ## Later
 

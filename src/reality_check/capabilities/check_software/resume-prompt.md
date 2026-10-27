@@ -10,3 +10,5 @@ $ask_first
 $keep_running
 $evidence $earlier_evidence
 As before, your final message is the report.
+
+$report_format

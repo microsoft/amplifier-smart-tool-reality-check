@@ -15,6 +15,7 @@ Install:
 - [Codex CLI](https://github.com/openai/codex) [signed in](https://developers.openai.com/codex/auth) with ChatGPT or an API key, for intelligent features through the `codex` agent provider.
 - [`ANTHROPIC_API_KEY` or a cloud provider's credentials](https://code.claude.com/docs/en/agent-sdk/quickstart), for intelligent features through the `claude` agent provider.
 - [Docker](https://docs.docker.com/get-started/get-docker/), for [evaluations](../evaluations/README.md).
+- [Node 22+](https://nodejs.org/) and [pnpm](https://pnpm.io/installation), only to change the app.
 
 ### Initial Setup
 
@@ -80,6 +81,24 @@ Run tests:
 
 ```bash
 uv run pytest
+```
+
+#### App Development
+
+The app's frontend is in `app/`: React, Vite, and Tailwind. Its built view and browser host page are committed under `src/reality_check/capabilities/app/static/`, so the tool installs and runs with no Node.
+
+Check and build it, and copy the build into the package (without pnpm, this says so and exits 0):
+
+```bash
+uv run build-app.py
+```
+
+`uv run build-app.py lint` (or `format`, `typecheck`, `build`, `build:view`) runs one step. The precommit hooks run these when `app/` changes, so commit the rebuilt files with the source.
+
+To see a change, build it and serve the app:
+
+```bash
+uv run build-app.py build build:view && uv run reality-check app
 ```
 
 #### References
