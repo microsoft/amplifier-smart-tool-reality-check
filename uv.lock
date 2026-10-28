@@ -118,16 +118,16 @@ wheels = [
 
 [[package]]
 name = "amplifier-agent"
-version = "0.23.1"
-source = { git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fpython&rev=v0.23.1#a289011169520f8cb2d023f0a486cbbb00082a8f" }
+version = "0.25.0"
+source = { git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fpython&rev=v0.25.0#1da05aa81fa2239d9044b375f21f75ed0e46c89f" }
 dependencies = [
     { name = "amplifier-agent-engine" },
 ]
 
 [[package]]
 name = "amplifier-agent-engine"
-version = "0.23.1"
-source = { git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fengine&rev=v0.23.1#a289011169520f8cb2d023f0a486cbbb00082a8f" }
+version = "0.25.0"
+source = { git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fengine&rev=v0.25.0#1da05aa81fa2239d9044b375f21f75ed0e46c89f" }
 dependencies = [
     { name = "amplifier-core" },
     { name = "amplifier-foundation" },
@@ -1982,7 +1982,7 @@ wheels = [
 
 [[package]]
 name = "reality-check"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "." }
 default-groups = "all"
 dependencies = [
@@ -2031,7 +2031,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "amplifier-agent", marker = "extra == 'amplifier-agent'", git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fpython&rev=v0.23.1" },
+    { name = "amplifier-agent", marker = "extra == 'amplifier-agent'", git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fpython&rev=v0.25.0" },
     { name = "certifi", specifier = ">=2026.10.19,<2027.0.0" },
     { name = "claude-agent-sdk", marker = "extra == 'claude'", specifier = ">=0.2.167,<0.3.0" },
     { name = "digital-twin-universe", git = "https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe?rev=8435e711eff63d533475861962f267b91fc5917a" },

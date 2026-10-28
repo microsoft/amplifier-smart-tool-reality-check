@@ -1,6 +1,6 @@
 [project]
 name = "reality-check"
-version = "0.5.0"
+version = "0.5.1"
 description = "Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do"
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
@@ -30,7 +30,7 @@ copilot = [
     "github-copilot-sdk>=1.0.21,<2.0.0",
 ]
 amplifier-agent = [
-    "amplifier-agent @ git+https://github.com/microsoft/amplifier-agent@v0.23.1#subdirectory=packages/python",
+    "amplifier-agent @ git+https://github.com/microsoft/amplifier-agent@v0.25.0#subdirectory=packages/python",
 ]
 codex = [
     "openai-codex>=0.162.1,<1.0.0",

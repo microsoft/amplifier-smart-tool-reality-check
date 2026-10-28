@@ -313,7 +313,7 @@ async def test_a_model_without_a_provider_is_refused_before_an_agent(
 
     assert failure.value.code == "model-invalid"
     assert "<provider>/<model>" in failure.value.message
-    assert "v0.23.1/docs/providers.md" in failure.value.remedy
+    assert "v0.25.0/docs/providers.md" in failure.value.remedy
     assert fake.calls == []
 
 
