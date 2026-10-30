@@ -48,11 +48,16 @@ READ_CHECK = Tool(
 )
 READ_CHECK_ACTIVITY = Tool(
     name="read_check_activity",
-    description="What a check's agent was asked, said, thought, and did, from a cursor, or one tool call in full. "
-    "Called by the view.",
+    description="A check's events, short or whole, picked by their ids. Called by the view.",
     input_schema={
         "type": "object",
-        "properties": {**CHECK_ARGUMENTS, "after": {"type": "integer"}, "tool_call_id": {"type": "string"}},
+        "properties": {
+            **CHECK_ARGUMENTS,
+            "after_event": {"type": "integer"},
+            "before_event": {"type": "integer"},
+            "tail_events": {"type": "integer"},
+            "truncate": {"type": "boolean"},
+        },
         "required": ["check_id", "checks_directory"],
     },
     _meta=APP_ONLY,

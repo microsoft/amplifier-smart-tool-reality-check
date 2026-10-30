@@ -355,7 +355,7 @@ async def test_notifications_become_agent_events_ending_in_one_terminal(world: C
         "success": True,
         "result": "x" * 2000,
     }
-    assert len(outcome.text) < 2000
+    assert outcome.text == "x" * 2000
     assert (failure.data["success"], failure.data["error"]) == (False, "no such file")
     assert first_usage.data == {
         "model": "gpt-6.1-sol",

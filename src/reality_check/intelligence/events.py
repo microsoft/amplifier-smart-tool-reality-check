@@ -5,8 +5,6 @@ from collections.abc import AsyncIterator
 
 from reality_check.intelligence.schemas import AgentEvent
 
-SHORTENED_LENGTH = 500
-
 
 class EventLog:
     """An agent run's events in order, replayed to each reader from the start and then live until `terminal`."""
@@ -39,8 +37,3 @@ def fresh_input(input_tokens: int | None, *cached: int | None) -> int | None:
     if input_tokens is None:
         return None
     return max(0, input_tokens - sum(tokens or 0 for tokens in cached))
-
-
-def shorten(text: str, limit: int = SHORTENED_LENGTH) -> str:
-    """The text cut to `limit` characters, marked when cut, so an event stays readable."""
-    return text if len(text) <= limit else f"{text[:limit]}... [{len(text) - limit} more characters]"

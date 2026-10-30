@@ -36,7 +36,7 @@ from amplifier_agent import (
     list_providers,
 )
 
-from reality_check.intelligence.events import EventLog, fresh_input, shorten
+from reality_check.intelligence.events import EventLog, fresh_input
 from reality_check.intelligence.interface import state_directory
 from reality_check.intelligence.schemas import (
     IMAGE_MEDIA_TYPES,
@@ -303,7 +303,7 @@ class AmplifierAgentRun:
                 case ToolCallEvent(call=call):
                     self._flush()
                     self._tool_names[call.call_id] = call.name
-                    arguments = shorten(json.dumps(call.arguments, default=str))
+                    arguments = json.dumps(call.arguments, default=str)
                     self._emit(
                         "tool_call",
                         f"{call.name} {arguments}".strip(),
@@ -327,7 +327,7 @@ class AmplifierAgentRun:
                     if resolution.error is not None:
                         outcome["error"] = resolution.error.message
                         text = text or resolution.error.message
-                    self._emit("tool_result", shorten(text), outcome, event)
+                    self._emit("tool_result", text, outcome, event)
                 case TurnResult() as result:
                     self._flush()
                     # Snapshots are cumulative for the turn and empty while a call is in flight, so a turn cancelled

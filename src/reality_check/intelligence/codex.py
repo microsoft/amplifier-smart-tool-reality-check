@@ -33,7 +33,7 @@ from openai_codex.types import (
     TurnStatus,
 )
 
-from reality_check.intelligence.events import EventLog, fresh_input, shorten
+from reality_check.intelligence.events import EventLog, fresh_input
 from reality_check.intelligence.interface import state_directory
 from reality_check.intelligence.schemas import AgentEvent, AgentEventKind, AgentRequest, AgentResult, Steering
 from reality_check.intelligence.submission import MAX_INVALID_SUBMISSIONS, resubmit_prompt, submission_problem
@@ -312,7 +312,7 @@ class CodexRun:
             name, arguments = _name(item), _input(item)
             self._emit(
                 "tool_call",
-                f"{name} {shorten(json.dumps(arguments, default=str))}".strip(),
+                f"{name} {json.dumps(arguments, default=str)}".strip(),
                 {"tool_call_id": item.get("id"), "tool_name": name, "arguments": arguments, **_agent(item)},
                 time,
             )
@@ -339,7 +339,7 @@ class CodexRun:
             }
             if failed:
                 outcome["error"] = _failure(item, output)
-            self._emit("tool_result", shorten(output or outcome.get("error", "")), outcome, time)
+            self._emit("tool_result", output or outcome.get("error", ""), outcome, time)
 
     def _note_usage(self, data: dict[str, Any]) -> None:
         usage = data.get("tokenUsage")

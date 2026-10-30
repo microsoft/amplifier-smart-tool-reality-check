@@ -67,7 +67,7 @@ export function Source({ markdown }: { markdown: string }) {
 /** A running check: what its agent said last, and the screenshots it has saved so far. */
 function Live({ check }: { check: Check }) {
   const { openEvidence, navigate } = useUi();
-  const said = latestSaid(check.activity?.entries ?? []);
+  const said = latestSaid(check.activity?.events ?? []);
   const images = check.evidence.filter(isImage);
   const newest = [...images]
     .sort((a, b) => Date.parse(b.modified_at) - Date.parse(a.modified_at))

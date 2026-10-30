@@ -42,6 +42,7 @@ from reality_check.capabilities.check_software.record import (
     EVENTS,
     EVIDENCE,
     PROCESS_LOG,
+    REPORT,
     SESSION,
     alive,
     check_state,
@@ -91,7 +92,6 @@ AGENT_TIMEOUT_GRACE_SECONDS = 60
 # The share of its time after which a check tells its agent to stop testing and write its report.
 WRAP_UP_FRACTION = 0.85
 WRAP_UP_ORIGIN = "reality-check"
-SHORTENED_LENGTH = 500
 MAX_NAMED_FILES = 20
 # What starts a detached check, given its request on stdin. Tests swap it for a command that fakes the agent.
 BACKGROUND_COMMAND = [sys.executable, "-m", "reality_check.capabilities.check_software.background"]
@@ -194,6 +194,7 @@ class InProcessCheckRun:
             "checks_directory": str(directory.parent),
             "implementation": intelligence.implementation,
             "agent_request": request.model_dump(mode="json", exclude={"output_schema"}),
+            "files": _files(directory, record.detached),
         }
         self._emit("started", f"Check {self.check_id} started in {directory}.", started)
         self._task = asyncio.create_task(self._drive())
@@ -370,7 +371,11 @@ class InProcessCheckRun:
                 self._emit("reasoning", event.text, event.data, event.time)
             case "tool_call" | "tool_result":
                 phase = "call" if event.kind == "tool_call" else "result"
-                self._emit("tool", _shorten(event.text), {**event.data, "phase": phase}, event.time)
+                data = {**event.data, "phase": phase}
+                # The text is the result already, so events.jsonl keeps it once.
+                if phase == "result" and data.get("result") == event.text:
+                    del data["result"]
+                self._emit("tool", event.text, data, event.time)
             case "usage":
                 self._record = self._record.model_copy(update={"usage": _added(self._record.usage, event.data)})
                 self._emit("usage", event.text, event.data, event.time)
@@ -410,7 +415,7 @@ class InProcessCheckRun:
 
     @property
     def _report_path(self) -> Path:
-        return self.directory / "report.md"
+        return self.directory / REPORT
 
     def _report(self, text: str, ending: str) -> str:
         """The agent's final message, kept in report.md so a later check can compare.
@@ -462,7 +467,8 @@ class InProcessCheckRun:
     def _emit(
         self, kind: CheckEventKind, text: str = "", data: dict[str, Any] | None = None, time: datetime | None = None
     ) -> None:
-        event = CheckEvent(check_id=self.check_id, kind=kind, text=text, data=data or {})
+        # Numbered here, the only writer of events.jsonl, so an event's id is its line there.
+        event = CheckEvent(id=len(self._events) + 1, check_id=self.check_id, kind=kind, text=text, data=data or {})
         if time is not None:
             event.time = time
         with (self.directory / EVENTS).open("a", encoding="utf-8") as events:
@@ -908,6 +914,33 @@ def _new_check_directory(root: Path) -> tuple[str, Path]:
         return check_id, directory
 
 
+def _files(directory: Path, detached: bool) -> dict[str, dict[str, str]]:
+    """The check's files a reader of its events goes to, and when to read each."""
+    read = (
+        f"reality-check read-check-activity --check-id {directory.name} --after-event <N-1> --before-event <N+1> "
+        "--no-truncate"
+    )
+    if directory.parent != DEFAULT_CHECKS_DIRECTORY.resolve():
+        read += f" --checks-directory {_quoted(str(directory.parent))}"
+    files = {
+        "events": {
+            "path": str(directory / EVENTS),
+            "use": "Every event in full, one JSON object per line: line N is event N, with tool arguments and "
+            f"results uncut. Read event N in full with `{read}`, or read line N of this file.",
+        },
+        "report": {
+            "path": str(directory / REPORT),
+            "use": "The check's final report, written when the check ends.",
+        },
+    }
+    if detached:
+        files["process_log"] = {
+            "path": str(directory / PROCESS_LOG),
+            "use": "What the check's own process printed. Read it when the check crashed.",
+        }
+    return files
+
+
 def _next_command(check_id: str, checks_directory: Path) -> str:
     command = f'reality-check check-software --resume {check_id} --request "<your answer>"'
     if checks_directory.resolve() != DEFAULT_CHECKS_DIRECTORY.resolve():
@@ -1063,7 +1096,3 @@ def _added(usage: CheckUsage, data: dict[str, Any]) -> CheckUsage:
         reasoning_tokens=usage.reasoning_tokens + (data.get("reasoning_tokens") or 0),
         billing=billing,
     )
-
-
-def _shorten(text: str, limit: int = SHORTENED_LENGTH) -> str:
-    return text if len(text) <= limit else f"{text[:limit]}... [{len(text) - limit} more characters]"

@@ -92,23 +92,25 @@ export type CheckDetail = {
   previous_checks: CheckReference[];
 };
 
-/** `ActivityKind` in schemas.py. */
-export type ActivityKind =
-  | "request"
-  | "said"
+/** `CheckEventKind` in schemas.py; reads never return `usage`. */
+export type CheckEventKind =
+  | "started"
+  | "progress"
   | "reasoning"
   | "tool"
-  | "tool-result"
   | "usage"
   | "steered"
-  | "ended";
+  | "finished"
+  | "failed";
 
-/** `ActivityEntry` in schemas.py. */
-export type ActivityEntry = {
+/** `CheckEvent` in schemas.py. */
+export type CheckEvent = {
+  /** Its line in the check's events.jsonl, from 1. */
+  id: number;
+  check_id: string;
   time: string;
-  kind: ActivityKind;
+  kind: CheckEventKind;
   text: string;
-  origin: string | null;
   data: Record<string, unknown>;
 };
 
@@ -117,10 +119,20 @@ export type CheckActivity = {
   check: CheckRecord;
   state: CheckState;
   process_log: string | null;
-  entries: ActivityEntry[];
-  /** Passed as `after`, it reads only what came next. */
-  cursor: number;
+  events: CheckEvent[];
 };
+
+/** How the short form ends a string it cut, as `_cut` in schemas.py writes it. */
+const CUT_MARKER =
+  /\.\.\.\[cut at [\d,]+ of [\d,]+ chars; full: line \d+ of events\.jsonl\]$/;
+
+/** Whether the short form cut `text`, so the event is read whole for it. */
+export function isCut(text: string): boolean {
+  return CUT_MARKER.test(text);
+}
+
+/** A tool call and, once it has one, its result, each as events.jsonl keeps it. */
+export type ToolCall = { call: CheckEvent | null; result: CheckEvent | null };
 
 /** What `list_checks` returns: every check, and the one the app was last asked to open, counted. */
 export type AppState = {
@@ -184,28 +196,68 @@ export async function readCheck(ref: CheckReference): Promise<CheckDetail> {
   return (await call("read_check", referenceArguments(ref))) as CheckDetail;
 }
 
-/** A check's activity, or only what came after the cursor `after`. */
+/** A check's events in short form, or only those after the event `afterEvent`. */
 export async function readCheckActivity(
   ref: CheckReference,
-  after?: number,
+  afterEvent?: number,
 ): Promise<CheckActivity> {
   const args = referenceArguments(ref);
   return (await call(
     "read_check_activity",
-    after === undefined ? args : { ...args, after },
+    afterEvent === undefined ? args : { ...args, after_event: afterEvent },
   )) as CheckActivity;
 }
 
-/** One tool call of a check's agent in full: its call, then its result once it has one. */
-export async function readToolCall(
+/** A check's events with ids between `afterEvent` and `beforeEvent`, as events.jsonl keeps them. */
+async function readWhole(
   ref: CheckReference,
-  toolCallId: string,
-): Promise<ActivityEntry[]> {
+  afterEvent: number,
+  beforeEvent: number,
+): Promise<CheckEvent[]> {
   const activity = (await call("read_check_activity", {
     ...referenceArguments(ref),
-    tool_call_id: toolCallId,
+    after_event: afterEvent,
+    before_event: beforeEvent,
+    truncate: false,
   })) as CheckActivity;
-  return activity.entries;
+  return activity.events;
+}
+
+/** One event of a check as events.jsonl keeps it, or null when the check has no such event. */
+export async function readEvent(
+  ref: CheckReference,
+  id: number,
+): Promise<CheckEvent | null> {
+  const events = await readWhole(ref, id - 1, id + 1);
+  return events.find((event) => event.id === id) ?? null;
+}
+
+/**
+ * One tool call of a check's agent in full, by the ids of its call event and, once it has one, its result event; the
+ * result is the event between them that answers the call.
+ */
+export async function readToolCall(
+  ref: CheckReference,
+  callEvent: number,
+  resultEvent: number | null,
+): Promise<ToolCall> {
+  const events = await readWhole(
+    ref,
+    callEvent - 1,
+    (resultEvent ?? callEvent) + 1,
+  );
+  const called = events.find((event) => event.id === callEvent) ?? null;
+  const toolCallId = called?.data.tool_call_id;
+  const result =
+    toolCallId === undefined
+      ? null
+      : (events.find(
+          (event) =>
+            event.kind === "tool" &&
+            event.data.phase === "result" &&
+            event.data.tool_call_id === toolCallId,
+        ) ?? null);
+  return { call: called, result };
 }
 
 /** Shows a check's folder in the file manager of the machine the server runs on; resolves with that folder. */

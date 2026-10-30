@@ -394,7 +394,7 @@ async def test_deltas_become_whole_messages_around_reasoning_and_tools_and_usage
     assert call.text == 'bash {"command": "ls"}'
     assert call.data == {"tool_call_id": "1", "tool_name": "bash", "arguments": {"command": "ls"}, "source": "built-in"}
     assert outcome.data == {"tool_call_id": "1", "tool_name": "bash", "success": True, "result": "x" * 2000}
-    assert len(outcome.text) < 600
+    assert outcome.text == "x" * 2000
     assert usage.data == {
         "model": "openai/gpt-6.1-sol",
         "input_tokens": 10,

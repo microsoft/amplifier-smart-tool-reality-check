@@ -35,7 +35,7 @@ from copilot.session_events import (
     ToolExecutionStartData,
 )
 
-from reality_check.intelligence.events import EventLog, fresh_input, shorten
+from reality_check.intelligence.events import EventLog, fresh_input
 from reality_check.intelligence.schemas import (
     AgentEvent,
     AgentEventKind,
@@ -259,7 +259,7 @@ class CopilotRun:
                 self._emit("reasoning", data.content, {"reasoning_id": data.reasoning_id, **agent}, event)
             case ToolExecutionStartData() as data:
                 self._tool_names[data.tool_call_id] = data.tool_name
-                arguments = "" if data.arguments is None else shorten(json.dumps(data.arguments, default=str))
+                arguments = "" if data.arguments is None else json.dumps(data.arguments, default=str)
                 self._emit(
                     "tool_call",
                     f"{data.tool_name} {arguments}".strip(),
@@ -287,7 +287,7 @@ class CopilotRun:
                 if data.error is not None:
                     outcome["error"] = data.error.message
                     content = content or data.error.message
-                self._emit("tool_result", shorten(content), outcome, event)
+                self._emit("tool_result", content, outcome, event)
             case AssistantUsageData() as data:
                 usage = {
                     "model": data.model,

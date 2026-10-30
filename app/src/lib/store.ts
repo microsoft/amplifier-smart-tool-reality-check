@@ -4,10 +4,12 @@ import {
   listChecks,
   readCheck,
   readCheckActivity,
-  type ActivityEntry,
+  readEvent,
+  isCut,
   type CheckDetail,
   type CheckRecord,
   type CheckReference,
+  type CheckEvent,
   type CheckState,
   type CheckSummary,
 } from "@/lib/api";
@@ -28,10 +30,9 @@ export type ProjectGroup = {
   checks: CheckSummary[];
 };
 
-/** A check's activity as read so far, and where the next read starts. */
+/** A check's events as read so far; the next read starts after the last one's id. */
 export type ActivityLog = {
-  entries: ActivityEntry[];
-  cursor: number;
+  events: CheckEvent[];
   processLog: string | null;
 };
 
@@ -99,6 +100,8 @@ let checkTimer: ReturnType<typeof setTimeout> | undefined;
 let generation = 0;
 let detailDue = 0;
 const inFlight = new Map<string, Promise<void>>();
+// The ids of the cut messages and reasoning each check's log has had read whole, so each is read once.
+const readWholeIds = new Map<string, Set<number>>();
 // What each read last returned, as JSON, so a poll that finds nothing new renders nothing.
 let listedJson = "";
 const detailJson = new Map<string, string>();
@@ -289,7 +292,7 @@ function freshState(
   return { ...state.states, [key]: { state: checkState, record } };
 }
 
-/** Run `read` for `key` unless one is already going, so two reads never apply the same entries twice. */
+/** Run `read` for `key` unless one is already going, so two reads never apply the same events twice. */
 function once(key: string, read: () => Promise<void>): Promise<void> {
   const going = inFlight.get(key);
   if (going) {
@@ -370,32 +373,32 @@ function refreshActivity(ref: CheckReference): Promise<void> {
     try {
       let read;
       try {
-        read = await readCheckActivity(ref, log?.cursor);
+        read = await readCheckActivity(ref, log?.events.at(-1)?.id);
       } catch (cause) {
-        // The log was replaced under the cursor, so it is read again from its start.
+        // The log was replaced by a shorter one, so it is read again from its start.
         if (
           !(cause instanceof AppError) ||
-          cause.code !== "bad-cursor" ||
+          cause.code !== "event-not-found" ||
           !log
         ) {
           throw cause;
         }
         read = await readCheckActivity(ref);
+        readWholeIds.delete(key);
         set({
           activities: {
             ...state.activities,
-            [key]: { entries: [], cursor: 0, processLog: null },
+            [key]: { events: [], processLog: null },
           },
         });
       }
       const current = state.activities[key];
-      const entries = current ? current.entries : [];
+      const events = current ? current.events : [];
       const activityErrors = { ...state.activityErrors };
       delete activityErrors[key];
       const unchanged =
         current &&
-        read.entries.length === 0 &&
-        current.cursor === read.cursor &&
+        read.events.length === 0 &&
         current.processLog === read.process_log;
       set({
         activities: unchanged
@@ -403,10 +406,9 @@ function refreshActivity(ref: CheckReference): Promise<void> {
           : {
               ...state.activities,
               [key]: {
-                entries: read.entries.length
-                  ? [...entries, ...read.entries]
-                  : entries,
-                cursor: read.cursor,
+                events: read.events.length
+                  ? [...events, ...read.events]
+                  : events,
                 processLog: read.process_log,
               },
             },
@@ -418,10 +420,50 @@ function refreshActivity(ref: CheckReference): Promise<void> {
             ? state.states
             : freshState(key, read.state, read.check),
       });
+      readCut(ref, key, read.events);
     } catch (cause) {
       set({ activityErrors: { ...state.activityErrors, [key]: cause } });
     }
   });
+}
+
+/** Read whole each message and reasoning among `events` that the short form cut, and show it whole once read. */
+function readCut(ref: CheckReference, key: string, events: CheckEvent[]) {
+  let asked = readWholeIds.get(key);
+  if (!asked) {
+    asked = new Set();
+    readWholeIds.set(key, asked);
+  }
+  for (const event of events) {
+    if (
+      (event.kind !== "progress" && event.kind !== "reasoning") ||
+      asked.has(event.id) ||
+      !isCut(event.text)
+    ) {
+      continue;
+    }
+    asked.add(event.id);
+    // A failed read leaves the cut text, which says where the whole is, rather than asking again every poll.
+    void readEvent(ref, event.id).then(
+      (whole) => {
+        const log = state.activities[key];
+        // Only where the log still holds the event read, since a log read again from its start replaces them all.
+        if (!whole || !log || !log.events.includes(event)) {
+          return;
+        }
+        set({
+          activities: {
+            ...state.activities,
+            [key]: {
+              ...log,
+              events: log.events.map((each) => (each === event ? whole : each)),
+            },
+          },
+        });
+      },
+      () => undefined,
+    );
+  }
 }
 
 function scheduleList() {
@@ -516,8 +558,13 @@ function subscribe(listener: () => void) {
   };
 }
 
+/** The store as it stands now. */
+export function snapshot(): State {
+  return state;
+}
+
 export function useStore(): State {
-  return useSyncExternalStore(subscribe, () => state);
+  return useSyncExternalStore(subscribe, snapshot);
 }
 
 /** How long a check has gone on, in seconds, counting up while it runs. */

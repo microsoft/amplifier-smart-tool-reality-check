@@ -139,6 +139,12 @@ def test_the_cli_detached_prints_the_started_event_and_exits_0_or_1_with_why_it_
     assert started.exit_code == 0, started.output
     [line] = [json.loads(line) for line in started.stdout.splitlines()]
     assert (line["kind"], line["data"]["origin"], line["data"]["detached"]) == ("started", "app", True)
+    directory = Path(line["data"]["directory"])
+    assert {name: file["path"] for name, file in line["data"]["files"].items()} == {
+        "events": str(directory / "events.jsonl"),
+        "report": str(directory / "report.md"),
+        "process_log": str(directory / "process.log"),
+    }
     # main() prints a RealityCheckError to stderr and exits 1; the runner calls the app beneath it.
     assert refused.exit_code == 1
     assert isinstance(refused.exception, RealityCheckError)

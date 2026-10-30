@@ -78,7 +78,7 @@ class AppServer:
         focus: CheckReference | None,
         list_checks: Callable[[], list[CheckSummary]],
         read_check: Callable[[str, Path], CheckDetail],
-        read_check_activity: Callable[[str, int | None, str | None, Path], CheckActivity],
+        read_check_activity: Callable[[str, int | None, int | None, int | None, bool, Path], CheckActivity],
         read_check_evidence: Callable[[str, str, Path], EvidenceFile],
         can_open_folders: Callable[[], bool],
         open_folder: Callable[[Path], None],
@@ -197,13 +197,13 @@ class AppServer:
             detail = await asyncio.to_thread(self._read_check, check_id, checks_directory)
             return _structured(detail.model_dump(mode="json"))
         if params.name == "read_check_activity":
-            after = arguments.get("after")
-            tool_call_id = arguments.get("tool_call_id")
             activity = await asyncio.to_thread(
                 self._read_check_activity,
                 check_id,
-                after if isinstance(after, int) else None,
-                tool_call_id if isinstance(tool_call_id, str) else None,
+                _integer(arguments.get("after_event")),
+                _integer(arguments.get("before_event")),
+                _integer(arguments.get("tail_events")),
+                arguments.get("truncate") is not False,
                 checks_directory,
             )
             return _structured(activity.model_dump(mode="json"))
@@ -262,3 +262,7 @@ def _structured(structured: dict[str, Any]) -> CallToolResult:
     return CallToolResult(
         content=[TextContent(type="text", text=json.dumps(structured))], structured_content=structured
     )
+
+
+def _integer(value: Any) -> int | None:
+    return value if isinstance(value, int) else None

@@ -260,7 +260,7 @@ async def test_sdk_events_become_agent_events_ending_in_one_terminal(world: Call
     assert call.data["tool_name"] == "bash"
     assert call.data["arguments"] == {"command": "echo hello"}
     assert outcome.data == {"tool_call_id": "1", "tool_name": "bash", "success": True, "result": "x" * 2000}
-    assert len(outcome.text) < 2000
+    assert outcome.text == "x" * 2000
     assert usage.data["input_tokens"] == 10
     assert usage.data["cost"] == 1.0
     assert usage.data["copilot_usage"] == {"totalNanoAiu": 1500.0}
@@ -398,7 +398,7 @@ async def test_reasoning_becomes_one_reasoning_event_and_empty_reasoning_none(wo
     assert (events[0].text, events[0].data) == ("Think.", {"reasoning_id": "r1"})
 
 
-async def test_a_long_tool_result_keeps_its_full_and_detailed_content_and_a_failure_its_error(
+async def test_a_long_tool_call_and_result_keep_their_full_text_and_detailed_content_and_a_failure_its_error(
     world: Callable[..., FakeWorld],
 ) -> None:
     long = "y" * 3000
@@ -430,9 +430,9 @@ async def test_a_long_tool_result_keeps_its_full_and_detailed_content_and_a_fail
 
     call, result, failure, _ = await collect(await CopilotIntelligence().start(request()))
 
-    assert len(call.text) < 600
+    assert call.text == f'view {{"path": "{"z" * 1000}"}}'
     assert call.data["arguments"] == {"path": "z" * 1000}
-    assert len(result.text) < 600
+    assert result.text == long
     assert (result.data["result"], result.data["detailed_result"]) == (long, long + "!")
     assert (failure.text, failure.data["error"], failure.data["success"]) == ("no such file", "no such file", False)
 

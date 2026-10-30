@@ -33,6 +33,7 @@ from reality_check.schemas import (
     CheckSummary,
     RealityCheckError,
     ReasoningEffort,
+    brief,
 )
 
 # SIGHUP is the console closing on Linux and macOS, SIGBREAK on Windows, where Ctrl+Break and closing it raise it.
@@ -224,21 +225,28 @@ def cancel_check(
 @app.command()
 def read_check_activity(
     check_id: Annotated[str, typer.Option("--check-id", help="The check, running or ended.")],
-    after: Annotated[
-        int | None, typer.Option("--after", help="The cursor an earlier read returned; only what came after.")
+    after_event: Annotated[
+        int | None, typer.Option("--after-event", help="Only events after this id, such as the last one read.")
     ] = None,
-    tool_call_id: Annotated[
-        str | None, typer.Option("--tool-call-id", help="Only this tool call and its result, in full.")
-    ] = None,
+    before_event: Annotated[int | None, typer.Option("--before-event", help="Only events before this id.")] = None,
+    tail_events: Annotated[int | None, typer.Option("--tail-events", help="Only the last this many.")] = None,
+    no_truncate: Annotated[
+        bool, typer.Option("--no-truncate", help="The events whole, as events.jsonl keeps them.")
+    ] = False,
     checks_directory: Annotated[
         Path, typer.Option("--checks-directory", help="Where checks are kept.")
     ] = DEFAULT_CHECKS_DIRECTORY,
 ) -> None:
-    """Print a check's state and what its agent said, thought, and did, as JSON. Deterministic."""
+    """Print a check's state and its events, as JSON. Deterministic."""
     activity = lib.read_check_activity(
-        check_id=check_id, after=after, tool_call_id=tool_call_id, checks_directory=checks_directory
+        check_id=check_id,
+        after_event=after_event,
+        before_event=before_event,
+        tail_events=tail_events,
+        truncate=not no_truncate,
+        checks_directory=checks_directory,
     )
-    typer.echo(activity.model_dump_json(indent=2))
+    typer.echo(activity.model_dump_json())
 
 
 @app.command()
@@ -360,8 +368,10 @@ async def _check(starting: Coroutine[Any, Any, lib.CheckRun], detach: bool) -> i
 
 
 def _print_event(event: CheckEvent) -> None:
-    # ASCII-escaped JSON is UTF-8 on any console encoding, and echo writes the line in one call and flushes it.
-    typer.echo(json.dumps(event.brief().model_dump(mode="json")))
+    short = brief(event)
+    if short is not None:
+        # ASCII-escaped JSON is UTF-8 on any console encoding, and echo writes the line in one call and flushes it.
+        typer.echo(json.dumps(short.model_dump(mode="json")))
 
 
 @contextlib.contextmanager

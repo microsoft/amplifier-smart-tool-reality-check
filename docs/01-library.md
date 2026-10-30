@@ -57,18 +57,21 @@ def cancel_check(check_id: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTOR
 
 Both raise `check-not-found`, `check-not-running` when the check has ended, and `check-crashed` when its process is gone before it ended. A crashed check is resumed like any other; resuming a check that is still running raises `check-running`.
 
-`CheckEvent` carries the `check_id`, a time, a `kind`, and the text or data for it:
+`CheckEvent` carries its `id`, its line in `events.jsonl` from 1, the `check_id`, a time, a `kind`, and the text or data for it:
 
 ```
-started     the check began; its check_id, directory, and the whole request: the arguments, the process, and the AgentRequest
+started     the check began; its check_id, directory, and the whole request: the arguments, the process, the AgentRequest,
+            and files: the path of events.jsonl, report.md, and, when detached, process.log, each with when to read it
 progress    what the agent is doing, in its words
 reasoning   what the agent thought, when the model thinks
-tool        a tool the agent called, and its result; text is shortened, data keeps the arguments and result in full
+tool        a tool the agent called, or its result, by data.phase; text is the name and arguments, or the result, whole
 usage       one model call's tokens, with fresh_input_tokens, and its billing when the agent provider reports one
 steered     a steering message was delivered, or `error` says why not; `origin` says who sent it
 finished    the CheckResult
 failed      a RealityCheckError, with its code and remedy
 ```
+
+`brief(event, truncate=True)` in `schemas.py` is the short form the CLI prints and `read_check_activity` returns. A `usage` event has none, so it is None. The rest leave out the `started` event's `agent_request.initial_message` and a `tool` event's `arguments`, `result`, and `detailed_result`, and cut every other string longer than 500 characters, but the `finished` event's report, so it ends with where it is whole: `...[cut at 500 of 3,319 chars; full: line 64 of events.jsonl]`. With `truncate` False, only a `usage` event is left out.
 
 ### Stopping to ask, and resuming
 
@@ -117,7 +120,7 @@ authorize actions outside the caller's scope.
 ```
 <checks_directory>/<check_id>/
   check.json     the CheckRecord: the request, model, status, timeout_seconds, usage, session_id, pid, last_event, origin, images
-  events.jsonl   every CheckEvent, in full
+  events.jsonl   every CheckEvent, in full, one per line: line N is the event with id N
   report.md      the agent's final message
   session/       the agent provider's own state for the session, resumed from a copy by a later check
   images/        the images the agent was shown
@@ -128,19 +131,21 @@ authorize actions outside the caller's scope.
 
 ## Read check activity
 
-A check's state and its activity, from its files, in any process: what was asked, what the agent said, thought, and did, steering, and how it ended. Deterministic.
+A check's state and its events, from its files, in any process, picked by their ids. Deterministic.
 
 ```python
 def read_check_activity(
     check_id: str,
-    after: int | None = None,         # the cursor of an earlier read: only what came after
-    tool_call_id: str | None = None,  # only that tool call and its result, with arguments, result, and detailed_result
+    after_event: int | None = None,   # only events with a larger id, such as the last one an earlier read returned
+    before_event: int | None = None,  # only events with a smaller id
+    tail_events: int | None = None,   # of those, only the last this many; 0 for none
+    truncate: bool = True,            # False for the events as events.jsonl keeps them
     checks_directory: Path = DEFAULT_CHECKS_DIRECTORY,
 ) -> CheckActivity
 ```
 
-`CheckActivity` holds the `CheckRecord`, the `state` (`running`, `crashed`, `done`, `cancelled`, `timed-out`, or `failed`), the `process_log` path when there is one, the `entries`, and the `cursor` to pass as `after`. Each `ActivityEntry` has a time, a `kind` (`request`, `said`, `reasoning`, `tool`, `tool-result`, `usage`, `steered`, `ended`), its text, the `origin` of a request or steering, and data.
-Raises `check-not-found`, `bad-cursor`, and `tool-call-not-found`.
+`CheckActivity` holds the `CheckRecord`, the `state` (`running`, `crashed`, `done`, `cancelled`, `timed-out`, or `failed`), the `process_log` path when there is one, and the `events`, each as `brief` makes it, so without `usage` events.
+Raises `check-not-found`, `event-not-found` when `after_event` is past the check's last event, and `bad-event-selection` for a negative number.
 
 ## List checks
 

@@ -18,7 +18,7 @@ import {
   type Step,
   type ToolStep,
 } from "@/lib/activity";
-import { readToolCall, type ActivityEntry } from "@/lib/api";
+import { readToolCall, type ToolCall } from "@/lib/api";
 import type { Evidence } from "@/lib/evidence";
 import { plural } from "@/lib/format";
 import { isRunning, type Check } from "@/lib/store";
@@ -50,42 +50,40 @@ function pretty(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-const fullCalls = new Map<string, Promise<ActivityEntry[]>>();
+const fullCalls = new Map<string, Promise<ToolCall>>();
 
 /** A tool call's arguments and result in full, read when it is opened. */
 function ToolDetail({ step, check }: { step: ToolStep; check: Check }) {
   const [read, setRead] = useState<{
-    entries: ActivityEntry[] | null;
+    full: ToolCall | null;
     error: unknown;
-  }>({ entries: null, error: null });
-  const finished = step.finished !== null;
+  }>({ full: null, error: null });
   useEffect(() => {
     if (!step.id) {
       return;
     }
     // A call still running is read again once it has its result.
-    const key = `${check.key}\n${step.id}\n${finished}`;
+    const key = `${check.key}\n${step.event}\n${step.resultEvent}`;
     let calls = fullCalls.get(key);
     if (!calls) {
-      calls = readToolCall(check.ref, step.id);
+      calls = readToolCall(check.ref, step.event, step.resultEvent);
       fullCalls.set(key, calls);
       calls.catch(() => fullCalls.delete(key));
     }
     let live = true;
     calls.then(
-      (entries) => live && setRead({ entries, error: null }),
-      (error: unknown) => live && setRead({ entries: null, error }),
+      (full) => live && setRead({ full, error: null }),
+      (error: unknown) => live && setRead({ full: null, error }),
     );
     return () => {
       live = false;
     };
-  }, [check.key, check.ref, step.id, finished]);
-  const call = read.entries?.find((entry) => entry.kind === "tool");
-  const result = read.entries?.find((entry) => entry.kind === "tool-result");
+  }, [check.key, check.ref, step.id, step.event, step.resultEvent]);
+  const call = read.full?.call;
+  const result = read.full?.result;
   const args = call ? call.data.arguments : undefined;
-  const output = result
-    ? (result.data.result ?? result.data.detailed_result ?? result.text)
-    : step.result;
+  // events.jsonl leaves out a result that is its text; a detailed result is extra to it, so never shown first.
+  const output = result ? (result.data.result ?? result.text) : step.result;
   return (
     <div className="flex flex-col gap-2 border-t border-line bg-field px-2.5 py-2">
       {read.error !== null && (
@@ -113,7 +111,7 @@ function ToolDetail({ step, check }: { step: ToolStep; check: Check }) {
           </pre>
         </div>
       )}
-      {!read.entries && read.error === null && step.id && (
+      {!read.full && read.error === null && step.id && (
         <span className="flex items-center gap-1.5 text-caption text-ink-muted">
           <LoadingMark />
           Reading the step in full
@@ -452,10 +450,11 @@ export function ActivityPanel({
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
   const [flash, setFlash] = useState<string | null>(null);
   const running = check ? isRunning(check.state) : false;
-  const entries = check?.activity?.entries;
+  const events = check?.activity?.events;
+  const request = check?.summary.request;
   const blocks = useMemo(
-    () => (entries ? blocksOf(entries, running) : []),
-    [entries, running],
+    () => (events ? blocksOf(events, running, request) : []),
+    [events, running, request],
   );
   const list = useRef<HTMLOListElement>(null);
   const pinned = useRef(true);
@@ -479,7 +478,7 @@ export function ActivityPanel({
       const timer = setTimeout(() => setUnseen(true), 0);
       return () => clearTimeout(timer);
     }
-  }, [entries?.length, running]);
+  }, [events?.length, running]);
 
   useEffect(() => {
     pinned.current = true;

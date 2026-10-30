@@ -35,7 +35,7 @@ from claude_agent_sdk import (
     fold_session_summary,
 )
 
-from reality_check.intelligence.events import EventLog, shorten
+from reality_check.intelligence.events import EventLog
 from reality_check.intelligence.interface import state_directory
 from reality_check.intelligence.schemas import (
     IMAGE_MEDIA_TYPES,
@@ -251,7 +251,7 @@ class ClaudeRun:
                     self._tool_names[call_id] = name
                     self._emit(
                         "tool_call",
-                        f"{name} {shorten(json.dumps(arguments, default=str))}".strip(),
+                        f"{name} {json.dumps(arguments, default=str)}".strip(),
                         {"tool_call_id": call_id, "tool_name": name, "arguments": arguments, **agent},
                     )
         if texts and message.parent_tool_use_id is None:
@@ -266,7 +266,7 @@ class ClaudeRun:
                 content = tool_result_text(block.content)
                 self._emit(
                     "tool_result",
-                    shorten(content),
+                    content,
                     {
                         "tool_call_id": block.tool_use_id,
                         "tool_name": self._tool_names.get(block.tool_use_id, ""),

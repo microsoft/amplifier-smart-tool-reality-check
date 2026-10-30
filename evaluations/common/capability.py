@@ -123,7 +123,7 @@ def check_software(
         events=found,
         outcome=_outcome(found) | {"exit_code": ran.exit_code},
         seconds=seconds,
-        usage=usage.summarize(found),
+        usage=usage.summarize(_usage_events(env, directory)),
         record_directory=directory,
         report=f"{directory}/report.md" if directory else None,
         where={
@@ -184,10 +184,23 @@ def baseline(
 
 def events(stdout: Path) -> list[dict[str, Any]]:
     """Events, one JSON object per line of `stdout`; lines that are not JSON are skipped."""
-    found: list[dict[str, Any]] = []
     if not stdout.is_file():
-        return found
-    for line in stdout.read_text(encoding="utf-8").splitlines():
+        return []
+    return _parsed(stdout.read_text(encoding="utf-8"))
+
+
+def _usage_events(env: Environment, directory: str | None) -> list[dict[str, Any]]:
+    """The check's `usage` events, from its own events.jsonl, since its stdout leaves them out."""
+    if directory is None:
+        return []
+    path = shlex.quote(f"{directory}/events.jsonl")
+    found = env.capture("capability-usage", f'grep -h \'"kind": "usage"\' {path} || true', timeout_seconds=300)
+    return _parsed(found.stdout)
+
+
+def _parsed(text: str) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    for line in text.splitlines():
         try:
             found.append(json.loads(line))
         except json.JSONDecodeError:
