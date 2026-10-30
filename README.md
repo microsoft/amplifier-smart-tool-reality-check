@@ -13,6 +13,8 @@ Use it from the agent you already work in, such as Amplifier, Copilot, Codex, or
 
    > Install https://github.com/microsoft/amplifier-smart-tool-reality-check and its agent skill.
 
+   To see your checks in the chat, also ask for its MCP app. See [Reality Check App](#reality-check-app).
+
 1. Work as usual. When your agent finishes something, it can call Reality Check itself, or you can ask:
 
    > My app is running locally. Check that a new user can sign up and send a message.
@@ -30,13 +32,21 @@ Use it after your agent builds a feature or fixes a bug, or when a scripted test
 
 For manual setup, see [Installation](#installation).
 
-## See your checks
+## Reality Check App
+
+The Reality Check app shows checks from all of your projects. 
+In an agent that shows [MCP Apps](https://github.com/modelcontextprotocol/ext-apps), the app opens inline in the chat. 
+Clients with known support are:
+- VSCode
+- Codex Desktop 
+
+To set it up, register `reality-check mcp` as a stdio MCP server in your client, then reload its MCP servers. Other MCP clients may be supported. 
+
+Otherwise, the app can be opened in browser:
 
 ```bash
 reality-check app
 ```
-
-Opens every check on your machine, from every project, in your browser: what is running now, each report with its screenshots and other evidence, and what the check's agent did. The app only shows checks; your agent starts and steers them.
 
 ## Command line
 
@@ -84,6 +94,7 @@ To install manually:
 npx skills add microsoft/amplifier-smart-tool-reality-check
 # Choose the provider(s) you want: [all], [copilot], [amplifier-agent], [codex], or [claude]
 uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
+# (Optional) Register `reality-check mcp` as a stdio MCP server in your client to see checks in the chat.
 ```
 
 To use it as a library:
