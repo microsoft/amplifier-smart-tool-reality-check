@@ -188,7 +188,7 @@ def world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[..., Fake
 
 def request(workspace: Path | None = None, **fields: Any) -> AgentRequest:
     return AgentRequest(
-        prompt="Do the work.",
+        initial_message="Do the work.",
         model=MODEL,
         workspace=HostWorkspace(path=workspace) if workspace is not None else None,
         timeout_seconds=60,

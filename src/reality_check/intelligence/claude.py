@@ -151,7 +151,7 @@ class ClaudeRun:
 
     async def _turns(self) -> AgentResult:
         schema = self._request.output_schema
-        await self._send(self._request.prompt, self._request.images)
+        await self._send(self._request.initial_message, self._request.images)
         if not self._running.done():
             self._running.set_result(None)
         invalid = 0

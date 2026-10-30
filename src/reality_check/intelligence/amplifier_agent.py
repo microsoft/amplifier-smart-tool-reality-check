@@ -392,7 +392,7 @@ class AmplifierAgentIntelligence:
                 message="The amplifier-agent agent provider does not take MCP servers.",
                 remedy="Use the copilot agent provider, or leave the MCP servers out.",
             )
-        content: list[ContentPart] = [TextPart(text=request.prompt)]
+        content: list[ContentPart] = [TextPart(text=request.initial_message)]
         for path in request.images:
             data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode("ascii")
             content.append(ImagePart(media_type=IMAGE_MEDIA_TYPES[path.suffix.lower()], data=data))

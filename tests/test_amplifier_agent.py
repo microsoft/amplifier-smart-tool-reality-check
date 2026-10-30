@@ -221,7 +221,7 @@ def submits(*attempts: dict[str, Any], text: str = "") -> Script:
 
 def request(workspace: Path | None = None, **fields: Any) -> AgentRequest:
     return AgentRequest(
-        prompt="Do the work.",
+        initial_message="Do the work.",
         model=MODEL,
         workspace=HostWorkspace(path=workspace) if workspace is not None else None,
         timeout_seconds=60,

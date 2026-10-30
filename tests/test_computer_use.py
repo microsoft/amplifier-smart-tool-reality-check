@@ -358,7 +358,7 @@ async def test_the_prompt_says_computer_use_is_enabled_and_the_check_lets_go_of_
     )
     await run.result()
 
-    prompt = fake.runs[0].request.prompt
+    prompt = fake.runs[0].request.initial_message
     enabled = "Computer use is enabled through the CLI `/cache/abc/cua-driver`; see the using-computer-use skill."
     assert f"{enabled}\n{check.ASK_FIRST[ask_first]}" in prompt
     assert "using-computer-use" in prompt
@@ -374,7 +374,8 @@ async def test_the_prompt_says_to_work_from_screenshots_without_an_accessibility
     await (await lib.check_software("Check the game", checks_directory=tmp_path, intelligence=fake)).result()
 
     assert (
-        "no accessibility tree, so work from screenshots; `/cache/abc/cua-driver doctor`" in fake.runs[0].request.prompt
+        "no accessibility tree, so work from screenshots; `/cache/abc/cua-driver doctor`"
+        in fake.runs[0].request.initial_message
     )
 
 
@@ -394,7 +395,7 @@ async def test_the_prompt_says_why_computer_use_is_off_and_how_to_enable_it(
         "Computer use is not enabled: cua-driver 0.36.0 is not installed. To enable it: Run `reality-check "
         "install-computer-use`. This matters only for software that needs its desktop UI driven."
     )
-    assert f"{off}\n{check.ASK_FIRST[ask_first]}" in fake.runs[0].request.prompt
+    assert f"{off}\n{check.ASK_FIRST[ask_first]}" in fake.runs[0].request.initial_message
 
 
 async def test_the_prompt_says_when_computer_use_cannot_be_enabled_here(
@@ -405,7 +406,7 @@ async def test_the_prompt_says_when_computer_use_cannot_be_enabled_here(
 
     await (await lib.check_software("Check Calculator", checks_directory=tmp_path, intelligence=fake)).result()
 
-    assert "riscv64 architecture. It cannot be enabled on this machine." in fake.runs[0].request.prompt
+    assert "riscv64 architecture. It cannot be enabled on this machine." in fake.runs[0].request.initial_message
 
 
 async def test_a_resumed_check_decides_computer_use_again(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -421,7 +422,7 @@ async def test_a_resumed_check_decides_computer_use_again(monkeypatch: pytest.Mo
     await second.result()
 
     enabled = "Computer use is enabled through the CLI `/cache/abc/cua-driver`; see the using-computer-use skill."
-    assert f"{enabled}\n{check.ASK_FIRST['when-off']}" in fake.runs[0].request.prompt
+    assert f"{enabled}\n{check.ASK_FIRST['when-off']}" in fake.runs[0].request.initial_message
     assert readied.released == [second.check_id]
 
 
@@ -484,7 +485,7 @@ async def test_without_an_install_the_agent_is_told_to_install_and_the_check_ena
     await run.steer("done")
     await run.result()
 
-    prompt = fake.runs[0].request.prompt
+    prompt = fake.runs[0].request.initial_message
     assert "Computer use is not installed yet." in prompt
     assert f"install it with `{check._install_command()}`" in prompt
     assert "enabled through the CLI `/cache/abc/cua-driver`" in prompt

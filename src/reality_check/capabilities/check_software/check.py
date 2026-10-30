@@ -696,7 +696,7 @@ async def _start(
     else:
         prompt = _prompt(request, target, directory, previous, ask_first, keep_running, computer_use)
     agent_request = AgentRequest(
-        prompt=prompt,
+        initial_message=prompt,
         model=model,
         workspace=HostWorkspace(path=Path.cwd()),
         reasoning_effort=effort,

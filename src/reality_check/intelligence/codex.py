@@ -215,7 +215,7 @@ class CodexRun:
         else:
             self._thread = await codex.thread_start(**options)
         self._session_id = self._thread.id
-        content: list[InputItem] = [TextInput(request.prompt)]
+        content: list[InputItem] = [TextInput(request.initial_message)]
         content.extend(LocalImageInput(str(path)) for path in request.images)
         await self._begin(content)
 

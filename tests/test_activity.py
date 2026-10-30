@@ -44,7 +44,7 @@ async def test_each_event_is_an_entry_and_tool_entries_leave_out_the_full_conten
     assert kinds == ["request", "said", "reasoning", "tool", "usage", "tool-result", "ended"]
     request, said, reasoning, call, _, result, ended = activity.entries
     assert (request.text, request.origin) == ("Check the page", "unknown")
-    assert "prompt" not in request.data["agent_request"]
+    assert "initial_message" not in request.data["agent_request"]
     assert request.data["model"] == "gpt-6.1-sol"
     assert said.text == "Opening the page."
     assert reasoning.text == "The page is the target."

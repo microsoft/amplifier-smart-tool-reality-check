@@ -150,7 +150,7 @@ class CopilotRun:
         self._session_id = session.session_id
         self._last_text = ""
         schema = self._request.output_schema
-        prompt = self._request.prompt
+        prompt = self._request.initial_message
         # The runtime echoes an attachment back in an event it cannot parse without a display name.
         attachments: list[Attachment] = [
             {"type": "file", "path": str(path), "displayName": path.name} for path in self._request.images

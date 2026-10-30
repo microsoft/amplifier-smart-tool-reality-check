@@ -77,7 +77,7 @@ def _entry(event: CheckEvent, record: CheckRecord, directory: Path) -> ActivityE
             started = dict(data)
             if isinstance(started.get("agent_request"), dict):
                 started["agent_request"] = {
-                    key: value for key, value in started["agent_request"].items() if key != "prompt"
+                    key: value for key, value in started["agent_request"].items() if key != "initial_message"
                 }
             return ActivityEntry(
                 time=event.time, kind="request", text=record.request, origin=record.origin, data=started

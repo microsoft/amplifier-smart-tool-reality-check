@@ -98,15 +98,15 @@ async def test_a_check_streams_its_events_and_ends_with_the_agent_s_report(works
     assert request.workspace is not None
     assert request.workspace.path == workspace
     assert request.resume is None
-    assert REQUEST in request.prompt
-    assert "http://localhost:8000" in request.prompt
-    assert str(workspace / "notes.md") in request.prompt
+    assert REQUEST in request.initial_message
+    assert "http://localhost:8000" in request.initial_message
+    assert str(workspace / "notes.md") in request.initial_message
     assert (run.directory / "evidence").is_dir()
-    assert f"Put every piece of evidence in `{run.directory / 'evidence'}`." in request.prompt
-    assert f"saved as `{run.directory / 'report.md'}`" in request.prompt
+    assert f"Put every piece of evidence in `{run.directory / 'evidence'}`." in request.initial_message
+    assert f"saved as `{run.directory / 'report.md'}`" in request.initial_message
     assert request.mcp_servers == {}
-    assert check._dtu_command() in request.prompt
-    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.prompt
+    assert check._dtu_command() in request.initial_message
+    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.initial_message
     skills = {path.name for directory in request.skill_directories for path in directory.iterdir()}
     assert skills == {
         "reaching-software",
@@ -217,12 +217,12 @@ async def test_resume_continues_the_session_on_the_same_agent_provider(tmp_path:
     assert result.agent_provider == "codex"
     request = fake.runs[0].request
     assert request.resume == SESSION
-    assert "<request>\nGo on.\n</request>" in request.prompt
-    assert "your final message is the report" in request.prompt
-    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.prompt
-    assert f"Put every piece of evidence in `{second.directory / 'evidence'}`." in request.prompt
-    assert f"before this request is in `{first.directory / 'evidence'}`" in request.prompt
-    assert f"`../{first.check_id}/evidence/01-open-home.png`" in request.prompt
+    assert "<request>\nGo on.\n</request>" in request.initial_message
+    assert "your final message is the report" in request.initial_message
+    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.initial_message
+    assert f"Put every piece of evidence in `{second.directory / 'evidence'}`." in request.initial_message
+    assert f"before this request is in `{first.directory / 'evidence'}`" in request.initial_message
+    assert f"`../{first.check_id}/evidence/01-open-home.png`" in request.initial_message
 
 
 async def test_a_check_past_its_timeout_fails_with_the_result_so_far(tmp_path: Path) -> None:
@@ -391,7 +391,7 @@ async def test_started_carries_the_whole_request_and_check_json_the_process_and_
     assert (started["model"], started["reasoning_effort"], started["origin"]) == ("any-model", "high", "unknown")
     assert started["images"] == [str(run.directory / "images" / "shot.png")]
     assert (started["pid"], started["detached"], started["implementation"]) == (os.getpid(), False, "fake")
-    assert started["agent_request"]["prompt"] == fake.runs[0].request.prompt
+    assert started["agent_request"]["initial_message"] == fake.runs[0].request.initial_message
     assert started["agent_request"]["session_directory"] == str(run.directory / "session")
     assert (running.pid, running.origin) == (os.getpid(), "unknown")
     assert running.pid_started == process_started(os.getpid())
