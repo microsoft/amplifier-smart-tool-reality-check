@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.5.2
+version: 0.6.0
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do
 use_cases:
