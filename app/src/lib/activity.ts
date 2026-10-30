@@ -1,12 +1,15 @@
 import type { IconName } from "@/components/ui/icon";
-import type { ActivityEntry } from "@/lib/api";
+import type { CheckEvent } from "@/lib/api";
 import type { Evidence } from "@/lib/evidence";
 
 export type ToolStep = {
   kind: "tool";
   key: string;
-  /** The call's id, which reads it in full. */
+  /** The call's tool_call_id. */
   id: string;
+  /** The ids of its call event and, once it has one, its result event, which read it in full. */
+  event: number;
+  resultEvent: number | null;
   name: string;
   verb: string;
   target: string;
@@ -223,10 +226,14 @@ function reasoningTitle(text: string): string {
 }
 
 /**
- * The activity as the timeline shows it: the request, what the agent said, runs of steps between, steering, and the
- * ending.
+ * The events as the timeline shows them: the request, what the agent said, runs of steps between, steering, and the
+ * ending. `request` is the check's whole request, which a `started` event's short form may cut.
  */
-export function blocksOf(entries: ActivityEntry[], running: boolean): Block[] {
+export function blocksOf(
+  events: CheckEvent[],
+  running: boolean,
+  request?: string,
+): Block[] {
   const blocks: Block[] = [];
   let group: Extract<Block, { kind: "steps" }> | null = null;
   const calls = new Map<string, ToolStep>();
@@ -235,7 +242,7 @@ export function blocksOf(entries: ActivityEntry[], running: boolean): Block[] {
   };
   const open = (time: string, key: string) => {
     if (!group) {
-      // Keyed by its first entry, so a block keeps its key as later entries arrive.
+      // Keyed by its first event, so a block keeps its key as later events arrive.
       group = {
         kind: "steps",
         key: `steps-${key}`,
@@ -249,26 +256,26 @@ export function blocksOf(entries: ActivityEntry[], running: boolean): Block[] {
     return group;
   };
 
-  entries.forEach((entry, index) => {
-    const data = entry.data ?? {};
-    switch (entry.kind) {
-      case "request":
+  events.forEach((event, index) => {
+    const data = event.data ?? {};
+    switch (event.kind) {
+      case "started":
         close();
         blocks.push({
           kind: "request",
           key: `request-${index}`,
-          time: entry.time,
-          text: entry.text,
-          origin: entry.origin,
+          time: event.time,
+          text: request ?? str(data.request),
+          origin: typeof data.origin === "string" ? data.origin : null,
         });
         break;
-      case "said":
+      case "progress":
         close();
         blocks.push({
           kind: "said",
           key: `said-${index}`,
-          time: entry.time,
-          text: entry.text,
+          time: event.time,
+          text: event.text,
         });
         break;
       case "steered":
@@ -276,67 +283,71 @@ export function blocksOf(entries: ActivityEntry[], running: boolean): Block[] {
         blocks.push({
           kind: "steered",
           key: `steered-${index}`,
-          time: entry.time,
-          text: entry.text,
-          origin: entry.origin,
+          time: event.time,
+          text: event.text,
+          origin: typeof data.origin === "string" ? data.origin : null,
           data,
         });
         break;
-      case "ended":
+      case "finished":
+      case "failed":
         close();
         blocks.push({
           kind: "ended",
           key: `ended-${index}`,
-          time: entry.time,
+          time: event.time,
           status: typeof data.status === "string" ? data.status : "failed",
-          text: entry.text,
+          text: event.text,
           remedy: typeof data.remedy === "string" ? data.remedy : null,
         });
         break;
       case "reasoning": {
-        const target = open(entry.time, String(index));
+        const target = open(event.time, String(index));
         target.steps.push({
           kind: "reasoning",
           key: `reasoning-${index}`,
-          time: entry.time,
-          title: reasoningTitle(entry.text),
-          text: entry.text,
+          time: event.time,
+          title: reasoningTitle(event.text),
+          text: event.text,
         });
-        target.finished = entry.time;
+        target.finished = event.time;
         break;
       }
       case "tool": {
+        if (data.phase === "result") {
+          const step = calls.get(str(data.tool_call_id));
+          if (step) {
+            step.result = event.text;
+            step.success = data.success !== false;
+            step.finished = event.time;
+            step.resultEvent = event.id;
+          }
+          if (group) {
+            group.finished = event.time;
+          }
+          break;
+        }
         const id = str(data.tool_call_id);
-        const target = open(entry.time, String(index));
-        const name = str(data.tool_name) || entry.text.split(" ")[0];
-        const { args, raw } = parseTool(entry.text, name);
+        const target = open(event.time, String(index));
+        const name = str(data.tool_name) || event.text.split(" ")[0];
+        const { args, raw } = parseTool(event.text, name);
         const step: ToolStep = {
           kind: "tool",
           key: `tool-${id || index}`,
           id,
+          event: event.id,
+          resultEvent: null,
           name,
           ...describe(name, args, raw),
           brief: raw,
           result: null,
           success: null,
-          started: entry.time,
+          started: event.time,
           finished: null,
           agent: typeof data.agent_id === "string" ? data.agent_id : null,
         };
         calls.set(id, step);
         target.steps.push(step);
-        break;
-      }
-      case "tool-result": {
-        const step = calls.get(str(data.tool_call_id));
-        if (step) {
-          step.result = entry.text;
-          step.success = data.success !== false;
-          step.finished = entry.time;
-        }
-        if (group) {
-          group.finished = entry.time;
-        }
         break;
       }
     }
@@ -360,10 +371,10 @@ export function currentStep(
     : null;
 }
 
-export function latestSaid(entries: ActivityEntry[]): ActivityEntry | null {
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    if (entries[index].kind === "said") {
-      return entries[index];
+export function latestSaid(events: CheckEvent[]): CheckEvent | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (events[index].kind === "progress") {
+      return events[index];
     }
   }
   return null;

@@ -13,12 +13,13 @@ not use it as a release gate or a CI step, or to run the same assertions again o
 Scripted tests are faster and cheaper there. Say that to the caller instead of starting a check.
 
 A check runs longer than most shell timeouts, so start it with `--detach`: it runs in a process of
-its own, and the command prints the `started` event and exits. Follow it with `read-check-activity`:
+its own, and the command prints the `started` event and exits. Follow it with `read-check-activity`,
+each time after the last event `id` you read:
 
 ```bash
 reality-check check-software --request "Check that a new user can sign up and send a message" \
   --target http://localhost:3000 --detach --origin claude-code:<session id>
-reality-check read-check-activity --check-id 20261013-142501-3f9a1c   # again with --after <cursor> until ended
+reality-check read-check-activity --check-id 20261013-142501-3f9a1c --after-event 1   # again until it ends
 reality-check steer-check --check-id 20261013-142501-3f9a1c --message "Use the test account in notes.md"
 reality-check cancel-check --check-id 20261013-142501-3f9a1c
 ```
@@ -91,21 +92,24 @@ Desktop apps need computer use. When it is not installed, the check's agent inst
 
 ## Result
 
-Each event is one JSON line on stdout, written whole and flushed: `check_id`, `time`, `kind`,
-`text`, and `data`. The kinds:
+Each event is one JSON line on stdout, written and flushed at once: `id`, `check_id`, `time`,
+`kind`, `text`, and `data`. The `id` is the event's line in the check's `events.jsonl`, which keeps
+every event whole. Stdout has each in short form: a string longer than 500 characters is cut and
+ends with where it is whole, such as `...[cut at 500 of 3,319 chars; full: line 64 of events.jsonl]`.
+The kinds:
 
-- `started`: always first; `data` has the check's `directory` and the whole request.
+- `started`: always first; `data` has the check's `directory`, its request, and `files`: the path of
+  its `events`, `report`, and, when detached, `process_log`, each with when to read it.
 - `progress`: what the agent is doing, in its words.
 - `reasoning`: what the agent thought, when the model thinks.
-- `tool`: a tool the agent called (`data.phase` `call`) or its result (`result`), shortened on
-  stdout; `read-check-activity --tool-call-id` has it in full.
-- `usage`: one model call's tokens in `data`, with `fresh_input_tokens`, and what it is billed in
-  `billing` when the agent provider reports it.
+- `tool`: a tool the agent called (`data.phase` `call`) or its result (`result`), with
+  `data.tool_call_id`; its full arguments and result are in `events.jsonl`.
 - `steered`: a steering message was delivered.
-- `finished`: always last when the check ends; `data` is the result.
+- `finished`: always last when the check ends; `data` is the result, its report never cut.
 - `failed`: always last when the check fails; `data` has `code`, `message`, and `remedy`.
 
-A file that ends without `finished` or `failed` means the process was killed.
+`events.jsonl` also has a `usage` event for each model call; the result's `usage` sums them. A file
+that ends without `finished` or `failed` means the process was killed.
 
 The result: `check_id`, `status` (`done`, `cancelled`, or `timed-out`), `session_id`,
 `agent_provider`, `report` (the agent's final message, in Markdown), `directory`, `next`, the exact

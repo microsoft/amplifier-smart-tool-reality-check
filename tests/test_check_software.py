@@ -80,9 +80,8 @@ async def test_a_check_streams_its_events_and_ends_with_the_agent_s_report(works
     assert events[2].data == {"reasoning_id": "r1"}
     assert events[3].data["arguments"] == {"command": "curl http://localhost"}
     assert events[5].data["phase"] == "result"
-    assert len(events[5].text) < 600
-    assert events[5].data["result"] == "x" * 2000
-    assert "result" not in events[5].brief().data
+    assert events[5].text == "x" * 2000
+    assert "result" not in events[5].data
     assert result.status == "done"
     assert result.report == "# Report\n\nGo: pass"
     assert result.session_id == SESSION
@@ -91,6 +90,7 @@ async def test_a_check_streams_its_events_and_ends_with_the_agent_s_report(works
     assert run.directory.parent == workspace / ".agents" / "reality-check"
     lines = (run.directory / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert [CheckEvent.model_validate_json(line) for line in lines] == events
+    assert [event.id for event in events] == list(range(1, len(lines) + 1))
     record = CheckRecord.model_validate_json((run.directory / "check.json").read_text(encoding="utf-8"))
     assert (record.status, record.session_id, record.model) == ("done", SESSION, "gpt-6.1-sol")
 
@@ -98,15 +98,15 @@ async def test_a_check_streams_its_events_and_ends_with_the_agent_s_report(works
     assert request.workspace is not None
     assert request.workspace.path == workspace
     assert request.resume is None
-    assert REQUEST in request.prompt
-    assert "http://localhost:8000" in request.prompt
-    assert str(workspace / "notes.md") in request.prompt
+    assert REQUEST in request.initial_message
+    assert "http://localhost:8000" in request.initial_message
+    assert str(workspace / "notes.md") in request.initial_message
     assert (run.directory / "evidence").is_dir()
-    assert f"Put every piece of evidence in `{run.directory / 'evidence'}`." in request.prompt
-    assert f"saved as `{run.directory / 'report.md'}`" in request.prompt
+    assert f"Put every piece of evidence in `{run.directory / 'evidence'}`." in request.initial_message
+    assert f"saved as `{run.directory / 'report.md'}`" in request.initial_message
     assert request.mcp_servers == {}
-    assert check._dtu_command() in request.prompt
-    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.prompt
+    assert check._dtu_command() in request.initial_message
+    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.initial_message
     skills = {path.name for directory in request.skill_directories for path in directory.iterdir()}
     assert skills == {
         "reaching-software",
@@ -217,12 +217,12 @@ async def test_resume_continues_the_session_on_the_same_agent_provider(tmp_path:
     assert result.agent_provider == "codex"
     request = fake.runs[0].request
     assert request.resume == SESSION
-    assert "<request>\nGo on.\n</request>" in request.prompt
-    assert "your final message is the report" in request.prompt
-    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.prompt
-    assert f"Put every piece of evidence in `{second.directory / 'evidence'}`." in request.prompt
-    assert f"before this request is in `{first.directory / 'evidence'}`" in request.prompt
-    assert f"`../{first.check_id}/evidence/01-open-home.png`" in request.prompt
+    assert "<request>\nGo on.\n</request>" in request.initial_message
+    assert "your final message is the report" in request.initial_message
+    assert (check.HERE / "report-format.md").read_text(encoding="utf-8") in request.initial_message
+    assert f"Put every piece of evidence in `{second.directory / 'evidence'}`." in request.initial_message
+    assert f"before this request is in `{first.directory / 'evidence'}`" in request.initial_message
+    assert f"`../{first.check_id}/evidence/01-open-home.png`" in request.initial_message
 
 
 async def test_a_check_past_its_timeout_fails_with_the_result_so_far(tmp_path: Path) -> None:
@@ -391,8 +391,15 @@ async def test_started_carries_the_whole_request_and_check_json_the_process_and_
     assert (started["model"], started["reasoning_effort"], started["origin"]) == ("any-model", "high", "unknown")
     assert started["images"] == [str(run.directory / "images" / "shot.png")]
     assert (started["pid"], started["detached"], started["implementation"]) == (os.getpid(), False, "fake")
-    assert started["agent_request"]["prompt"] == fake.runs[0].request.prompt
+    assert started["agent_request"]["initial_message"] == fake.runs[0].request.initial_message
     assert started["agent_request"]["session_directory"] == str(run.directory / "session")
+    assert started["files"]["events"]["path"] == str(run.directory / "events.jsonl")
+    assert started["files"]["report"]["path"] == str(run.directory / "report.md")
+    assert "process_log" not in started["files"]
+    assert (
+        f"`reality-check read-check-activity --check-id {run.check_id} --after-event <N-1> --before-event <N+1> "
+        f"--no-truncate --checks-directory {tmp_path}`" in started["files"]["events"]["use"]
+    )
     assert (running.pid, running.origin) == (os.getpid(), "unknown")
     assert running.pid_started == process_started(os.getpid())
     assert running.last_event is not None
@@ -627,3 +634,30 @@ def test_the_cli_passes_images_and_origin_and_prints_tool_lines_without_their_fu
     tools = [line for line in lines if line["kind"] == "tool"]
     assert tools
     assert all("result" not in line["data"] and "arguments" not in line["data"] for line in tools)
+
+
+def test_the_cli_prints_each_event_short_with_its_id_and_leaves_out_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(interface, "resolve_intelligence", lambda *arguments: FakeIntelligence(finishes()))
+
+    result = runner.invoke(app, ["check-software", "--request", REQUEST, "--checks-directory", str(tmp_path)])
+
+    lines = [json.loads(line) for line in result.stdout.splitlines()]
+    assert result.exit_code == 0, result.output
+    assert [line["kind"] for line in lines] == ["started", "progress", "reasoning", "tool", "tool", "finished"]
+    assert [line["id"] for line in lines] == [1, 2, 3, 4, 6, 7]
+    assert "initial_message" not in lines[0]["data"]["agent_request"]
+    assert lines[4]["text"] == f"{'x' * 500}...[cut at 500 of 2,000 chars; full: line 6 of events.jsonl]"
+    assert max(len(text) for line in lines for text in strings(line)) <= len(lines[4]["text"])
+
+
+def strings(value: Any) -> list[str]:
+    """Every string in a JSON value, however deep."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in strings(item)]
+    if isinstance(value, list):
+        return [text for item in value for text in strings(item)]
+    return []

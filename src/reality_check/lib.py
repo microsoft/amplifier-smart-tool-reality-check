@@ -117,13 +117,29 @@ def cancel_check(check_id: str, checks_directory: Path = DEFAULT_CHECKS_DIRECTOR
 
 def read_check_activity(
     check_id: str,
-    after: int | None = None,
-    tool_call_id: str | None = None,
+    after_event: int | None = None,
+    before_event: int | None = None,
+    tail_events: int | None = None,
+    truncate: bool = True,
     checks_directory: Path = DEFAULT_CHECKS_DIRECTORY,
 ) -> CheckActivity:
-    """A check as it stands and what its agent said, thought, and did, from any process; `after` reads on from a cursor."""
+    """A check as it stands and its events, from any process, short as the CLI prints them or whole.
+
+    Args:
+        check_id: The check, running or ended.
+        after_event: Only events with a larger id, such as the last one an earlier read returned.
+        before_event: Only events with a smaller id.
+        tail_events: Of those, only the last this many; 0 for none.
+        truncate: False for the events as events.jsonl keeps them.
+        checks_directory: Where the check is kept.
+    """
     return activity.read_check_activity(
-        check_id=check_id, after=after, tool_call_id=tool_call_id, checks_directory=checks_directory
+        check_id=check_id,
+        after_event=after_event,
+        before_event=before_event,
+        tail_events=tail_events,
+        truncate=truncate,
+        checks_directory=checks_directory,
     )
 
 
@@ -164,9 +180,7 @@ def app_server(directory: Path | None = None) -> AppServer:
         focus,
         list_checks=checks.list_checks,
         read_check=lambda check_id, checks_directory: checks.read_check(check_id, checks_directory),
-        read_check_activity=lambda check_id, after, tool_call_id, checks_directory: activity.read_check_activity(
-            check_id=check_id, after=after, tool_call_id=tool_call_id, checks_directory=checks_directory
-        ),
+        read_check_activity=activity.read_check_activity,
         read_check_evidence=checks.read_check_evidence,
         can_open_folders=app_folders.can_open_folders,
         open_folder=app_folders.open_folder,

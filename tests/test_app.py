@@ -147,7 +147,11 @@ async def test_the_view_reads_checks_and_their_evidence_and_nothing_else(
     async with Client(f"{open_app().open().url}/mcp") as client:
         listed = await client.call_tool("list_checks", {})
         read = await client.call_tool("read_check", arguments)
-        activity = await client.call_tool("read_check_activity", {**arguments, "after": 0})
+        activity = await client.call_tool("read_check_activity", {**arguments, "after_event": 1})
+        result = await client.call_tool(
+            "read_check_activity", {**arguments, "after_event": 5, "before_event": 7, "truncate": False}
+        )
+        gone = await client.call_tool("read_check_activity", {**arguments, "after_event": 99})
         image = (await client.read_resource(f"{evidence}/evidence/01-home.png")).contents[0]
         with pytest.raises(MCPError, match="not a path inside"):
             await client.read_resource(f"{evidence}/session/token.json")
@@ -155,7 +159,10 @@ async def test_the_view_reads_checks_and_their_evidence_and_nothing_else(
 
     assert [check["check_id"] for check in (listed.structured_content or {})["checks"]] == [run.check_id]
     assert CheckDetail.model_validate(read.structured_content).evidence[0].path == "evidence/01-home.png"
-    assert CheckActivity.model_validate(activity.structured_content).state == "done"
+    read_activity = CheckActivity.model_validate(activity.structured_content)
+    assert (read_activity.state, read_activity.events[0].id) == ("done", 2)
+    assert [event.text for event in CheckActivity.model_validate(result.structured_content).events] == ["x" * 2000]
+    assert gone.structured_content == {"code": "event-not-found"}
     assert isinstance(image, BlobResourceContents)
     assert (image.mime_type, base64.b64decode(image.blob)) == ("image/png", b"\x89PNG")
     assert elsewhere.is_error

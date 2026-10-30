@@ -37,9 +37,9 @@ class McpServer(BaseModel):
 
 
 class AgentRequest(BaseModel):
-    """One agent run: a prompt, a model, and optionally a place to work and tools to add."""
+    """One agent run: an initial message, a model, and optionally a place to work and tools to add."""
 
-    prompt: str
+    initial_message: str
     model: str
     workspace: HostWorkspace | None = Field(
         default=None, description="The agent's working directory; None leaves it to the agent provider"
@@ -61,7 +61,7 @@ class AgentRequest(BaseModel):
     output_schema: dict[str, Any] | None = Field(
         default=None, description="JSON schema the structured output must satisfy; None asks for text only"
     )
-    images: list[Path] = Field(default_factory=list, description="Images shown to the agent with the prompt")
+    images: list[Path] = Field(default_factory=list, description="Images shown to the agent with the initial message")
     session_directory: Path | None = Field(
         default=None,
         description="Where the agent provider keeps this run's session, so it can be read and resumed from there; None "

@@ -94,6 +94,7 @@ To install manually:
 ```bash
 # Install the Agent Skill so your agent knows about it.
 npx skills add microsoft/amplifier-smart-tool-reality-check
+# If that fails, copy this repository's skills/reality-check folder into your agent's skills folder.
 # Choose the provider(s) you want: [all], [copilot], [amplifier-agent], [codex], or [claude]
 uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
 # (Optional) Register `reality-check mcp` as a stdio MCP server in your client to see checks in the chat.

@@ -43,12 +43,10 @@ function worded(code: string | null): string | null {
       return "The list of projects Reality Check keeps on this machine could not be read.";
     case "bad-events":
       return "This check's activity log has a line that could not be read.";
-    case "bad-cursor":
+    case "event-not-found":
       return "This check's activity changed while it was being read.";
     case "cannot-open-folder":
       return "This machine could not open the folder. Copy its path instead.";
-    case "tool-call-not-found":
-      return "That step is not in this check's activity anymore.";
     default:
       return null;
   }

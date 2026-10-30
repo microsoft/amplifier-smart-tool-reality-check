@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.5.2
+version: 0.6.0
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do
 use_cases:
@@ -144,8 +144,8 @@ wrong and how to fix it, and exits non-zero: 1 for a failure the tool can name, 
 bad invocation. Never treat an empty result as success.
 
 `check-software` runs for minutes: start it with `--detach`, which prints its `started` event
-and exits, then follow it with `read-check-activity` until an `ended` entry. `list-intelligence-models`
-lists the models it runs on.
+and exits, then follow it with `read-check-activity --after-event <last id>` until a `finished` or
+`failed` event. `list-intelligence-models` lists the models it runs on.
 
 ## After a check
 

@@ -188,7 +188,7 @@ def world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[..., Fake
 
 def request(workspace: Path | None = None, **fields: Any) -> AgentRequest:
     return AgentRequest(
-        prompt="Do the work.",
+        initial_message="Do the work.",
         model=MODEL,
         workspace=HostWorkspace(path=workspace) if workspace is not None else None,
         timeout_seconds=60,
@@ -374,7 +374,7 @@ async def test_claude_messages_become_agent_events_ending_in_one_terminal(world:
     assert call.text == 'Bash {"command": "echo hi"}'
     assert call.data == {"tool_call_id": "call-1", "tool_name": "Bash", "arguments": {"command": "echo hi"}}
     assert outcome.data == {"tool_call_id": "call-1", "tool_name": "Bash", "success": True, "result": "x" * 2000}
-    assert len(outcome.text) < 2000
+    assert outcome.text == "x" * 2000
     assert sub_call.data["agent_id"] == "task-1"
     assert sub_outcome.data == {
         "tool_call_id": "call-2",

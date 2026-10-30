@@ -20,7 +20,7 @@ async def judge(config_path: Path) -> None:
     intelligence.preflight()
     run = await intelligence.start(
         AgentRequest(
-            prompt=config["prompt"],
+            initial_message=config["prompt"],
             model=config["model"],
             reasoning_effort=config["reasoning_effort"],
             workspace=HostWorkspace(path=Path(config["workspace"])),

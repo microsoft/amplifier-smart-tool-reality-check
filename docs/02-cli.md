@@ -36,9 +36,9 @@ reality-check check-software --request TEXT [--target TARGET] [--resume CHECK_ID
                              [--image PATH ...] [--origin unknown] [--detach]
 ```
 
-`lib.check_software()`, run to the end. Each `CheckEvent` is printed to stdout as one JSON line as it happens, in its brief form: a `tool` event without the `arguments`, `result`, and `detailed_result` that `events.jsonl` and the library keep.
+`lib.check_software()`, run to the end. Each `CheckEvent` is printed to stdout as one JSON line as it happens, in the short form `schemas.brief` makes: no `usage` events, a `tool` event without the `arguments`, `result`, and `detailed_result`, and every other string past 500 characters cut, but the report, ending with the line of `events.jsonl` that keeps it whole.
 
-With `--detach`, the check runs in a process of its own: the command prints the `started` event and exits 0, or exits 1 with why the check did not start. An agent then follows it with `read-check-activity`:
+With `--detach`, the check runs in a process of its own: the command prints the `started` event and exits 0, or exits 1 with why the check did not start. An agent then follows it with `read-check-activity --after-event` and the last event `id` it read:
 
 ```bash
 reality-check check-software --request "Check that a new user can sign up" --target http://localhost:3000 --detach
@@ -53,7 +53,7 @@ reality-check check-software --request "Check that a new user can sign up" --tar
 The output is made for that:
 
 - Every event is one line of UTF-8 JSON, written in one call and flushed at once, so a reader of the file never sees half a line.
-- The first line is always `started`, with the `check_id` and the check's directory.
+- The first line is always `started`, with the `check_id`, the check's directory, and its `files`, each with when to read it.
 - The last line is always `finished`, carrying the `CheckResult`, or `failed`, carrying the error. A file that ends without one means the process was killed.
 
 Ctrl+C, SIGTERM, and closing the console all cancel the check the same way; its session can still be resumed. Exits 0 when the check ends `done`, and 1 when it is cancelled, times out, or fails. What the report says about the software never changes the exit code.
@@ -77,10 +77,11 @@ reality-check cancel-check --check-id CHECK_ID [--checks-directory .agents/reali
 ## reality-check read-check-activity
 
 ```bash
-reality-check read-check-activity --check-id CHECK_ID [--after CURSOR] [--tool-call-id ID] [--checks-directory .agents/reality-check]
+reality-check read-check-activity --check-id CHECK_ID [--after-event N] [--before-event N] [--tail-events N] [--no-truncate]
+                                  [--checks-directory .agents/reality-check]
 ```
 
-`lib.read_check_activity()`, printed as JSON.
+`lib.read_check_activity()`, printed as one line of JSON. `--no-truncate` is `truncate=False`.
 
 ## reality-check list-checks
 

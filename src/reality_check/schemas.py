@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, NamedTuple, Self, get_args
+from typing import Any, Literal, NamedTuple, get_args
 
 from pydantic import BaseModel, Field
 
@@ -198,8 +198,10 @@ CheckStatus = Literal["running", "done", "cancelled", "timed-out"]
 # A check's status as its record and its process tell it: `crashed` is running by its record with its process gone.
 CheckState = Literal["running", "crashed", "done", "cancelled", "timed-out", "failed"]
 CheckEventKind = Literal["started", "progress", "reasoning", "tool", "usage", "steered", "finished", "failed"]
-# The fields of a tool event's data that hold its arguments and result in full.
+# The fields of a tool event's data that hold its arguments and result in full, left out of its short form.
 FULL_FIELDS = ("arguments", "result", "detailed_result")
+# Past this many characters, a string in an event's short form is cut, marked with where the whole string is.
+SHORTENED_LENGTH = 500
 # Relative, so checks are kept beside the project the caller works in.
 DEFAULT_CHECKS_DIRECTORY = Path(".agents/reality-check")
 DEFAULT_TIMEOUT_SECONDS = 3600
@@ -246,19 +248,54 @@ class CheckTimeoutError(RealityCheckError):
 class CheckEvent(BaseModel):
     """One thing that happened in a check, as one JSON line in the check's events.jsonl and on the CLI's stdout."""
 
+    id: int = Field(description="Its line number in the check's events.jsonl, from 1")
     check_id: str
     time: datetime = Field(default_factory=lambda: datetime.now(UTC))
     kind: CheckEventKind
     text: str = ""
     data: dict[str, Any] = Field(default_factory=dict)
 
-    def brief(self) -> Self:
-        """The event without a tool's full arguments and result, which events.jsonl keeps."""
-        if self.kind != "tool":
-            return self
-        return self.model_copy(
-            update={"data": {key: value for key, value in self.data.items() if key not in FULL_FIELDS}}
+
+def brief(event: CheckEvent, truncate: bool = True) -> CheckEvent | None:
+    """The event as the CLI prints it and activity reads return it; None for a `usage` event, which check.json sums.
+
+    Its short form leaves out the agent's prompt and a tool's full arguments and result, and cuts every other long
+    string but the final report, marked with the line of events.jsonl that keeps it whole. With `truncate` False, the
+    event is as events.jsonl keeps it.
+    """
+    if event.kind == "usage":
+        return None
+    if not truncate:
+        return event
+    data = dict(event.data)
+    match event.kind:
+        case "started" if isinstance(data.get("agent_request"), dict):
+            data["agent_request"] = {
+                key: value for key, value in data["agent_request"].items() if key != "initial_message"
+            }
+        case "tool":
+            data = {key: value for key, value in data.items() if key not in FULL_FIELDS}
+    # The report is what a check is for, so it is never cut.
+    whole = {"report"} if event.kind == "finished" else set()
+    data = {key: value if key in whole else _cut(value, event.id) for key, value in data.items()}
+    return event.model_copy(update={"text": _cut(event.text, event.id), "data": data})
+
+
+def _cut(value: Any, line: int) -> Any:
+    """`value` with every string in it longer than SHORTENED_LENGTH cut, and marked with where it is whole."""
+    if isinstance(value, str):
+        if len(value) <= SHORTENED_LENGTH:
+            return value
+        # The app finds cut text by this ending (`isCut` in app/src/lib/api.ts), so the two change together.
+        return (
+            f"{value[:SHORTENED_LENGTH]}...[cut at {SHORTENED_LENGTH:,} of {len(value):,} chars; full: line {line} of "
+            "events.jsonl]"
         )
+    if isinstance(value, dict):
+        return {key: _cut(item, line) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_cut(item, line) for item in value]
+    return value
 
 
 class CheckRecord(BaseModel):
@@ -297,27 +334,13 @@ class CheckRecord(BaseModel):
     detached: bool = Field(default=False, description="Whether the check runs in a process of its own")
 
 
-ActivityKind = Literal["request", "said", "reasoning", "tool", "tool-result", "usage", "steered", "ended"]
-
-
-class ActivityEntry(BaseModel):
-    """One thing in a check's activity: what was asked, what its agent said, thought, and did, and how it ended."""
-
-    time: datetime
-    kind: ActivityKind
-    text: str
-    origin: str | None = None
-    data: dict[str, Any] = Field(default_factory=dict)
-
-
 class CheckActivity(BaseModel):
-    """A check as it stands and its activity, from the start or from an earlier read's cursor."""
+    """A check as it stands and its events, each in the short form the CLI prints, or as events.jsonl keeps it."""
 
     check: CheckRecord
     state: CheckState
     process_log: Path | None = Field(description="What the check's own process printed, for a detached check")
-    entries: list[ActivityEntry]
-    cursor: int = Field(description="Pass as `after` to read only what comes next")
+    events: list[CheckEvent] = Field(description="In order, without `usage` events, which check.json sums")
 
 
 class Project(BaseModel):
