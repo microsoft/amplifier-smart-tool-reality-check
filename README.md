@@ -2,6 +2,8 @@
 
 <p align="center">The most thorough tester you have worked with. It finds what your agent missed, and proves it.</p>
 
+<img width="1280" height="720" alt="2026-10-30-reality-check-readme" src="https://github.com/user-attachments/assets/81ef7c5b-cd87-4496-ac88-40d0b02f3ec7" />
+
 Has your agent ever finished a feature or a bug fix, said it works, and it was still broken?
 Reality Check is a [Smart Tool](https://github.com/microsoft/amplifier-smart-tools) that tests your app by using it: in a browser, on the desktop, or in a [Digital Twin Universe](https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe) that it sets up for you. Then it reports what works and what does not, with evidence for each finding.
 
