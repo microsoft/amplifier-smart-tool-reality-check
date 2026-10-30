@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.5.1
+version: 0.5.2
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do
 use_cases:
@@ -95,6 +95,9 @@ uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smar
 
 # once, to check desktop apps
 reality-check install-computer-use
+
+# once, to show checks inline: register `reality-check mcp` as a stdio MCP server in the
+# client, then reload its MCP servers. `reality-check mcp --help` has the details.
 ```
 
 `[all]` brings every agent provider the model-backed capabilities run through. Put
@@ -155,8 +158,10 @@ caller's authorized scope; ask before actions that need further approval. After
 a fix, check again with `--resume <check_id>`, the command the result's `next` names.
 
 To find an earlier check without its ID, `list-checks` lists every check on this machine. For the
-person you work for, `reality-check app` shows every check with its report and evidence in their
-browser.
+person you work for, the app shows every check with its report and evidence. With the MCP server
+registered, call its `open_app` tool with the check's ID: hosts that render MCP Apps show
+it inline. Without it, `reality-check app` shows it in their browser. `mcp --help` says how to
+register the server.
 
 ## Choosing a surface
 

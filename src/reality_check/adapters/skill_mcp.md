@@ -9,6 +9,11 @@ free port, and a session that never opens it binds nothing.
 { "mcpServers": { "reality-check": { "command": "reality-check", "args": ["mcp"] } } }
 ```
 
+Each client keeps this in its own config format. Reload the client's MCP servers after
+registering: a running session may not load new ones until then. VS Code and Codex Desktop are
+known to show the app inline. Other hosts that render MCP Apps may too; the rest get `open_app`'s
+URL.
+
 The library has no `mcp` function. The command calls `run_stdio()` in `reality_check.adapters.mcp`,
 which serves `app_server().server` from the library over stdio.
 
