@@ -18,7 +18,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 # Moves the container's processes out of the root cgroup so a nested dockerd can delegate cgroup v2 controllers.
 COPY --from=dind /usr/local/bin/dind /usr/local/bin/dind
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /uvx /usr/local/bin/
 
 # The universe's certificate authority, provided by `launch` as the `dtu-ca` build context, so installs from
 # github.com URLs the gateway answers for are trusted.

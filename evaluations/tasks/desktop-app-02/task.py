@@ -16,6 +16,8 @@ DESCRIPTION = (
     "is a check that covers these features through the app's UI, shows that they work, reports no defects, and does "
     "not lose the user's changes on the way. A reality-check run installs it with computer use, as a user would."
 )
+# Installed is the trigger tasks' own evaluation of whether an agent chooses reality-check.
+CAPABILITIES = ("reality-check", "baseline")
 REQUEST = (
     "I use GitHub Desktop with my notes-app repo. Can you check that its change management features (reviewing "
     "changes, choosing what to commit, discarding changes, and committing) all work as expected?"

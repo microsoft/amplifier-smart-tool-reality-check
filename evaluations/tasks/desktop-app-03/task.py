@@ -9,6 +9,8 @@ from common.capability import CapabilityResult
 from common.context import Criterion, RunContext
 from common.environment import WORK, Environment
 
+from reality_check.capabilities.computer_use.install import VERSION as CUA_DRIVER_VERSION
+
 TASK = Path(__file__).resolve().parent
 DESCRIPTION = (
     "desktop-app-01's GitHub Desktop and request, with the same discard bug, but reality-check is installed without "
@@ -63,7 +65,7 @@ NOTES_APP = "~/projects/notes-app"
 TELEMETRY_FILES = r"\( -name '.telemetry*' -o -name .installation_recorded \)"
 CUA_DRIVER_CALL = re.compile(r"cua-driver\S*\s+call\b")
 INSTALL_COMPUTER_USE = re.compile(r"reality-check\S*\s+install-computer-use\b")
-INSTALLED_DRIVER = "~/.local/share/reality-check/cua-driver/0.36.0/cua-driver"
+INSTALLED_DRIVER = f"~/.local/share/reality-check/cua-driver/{CUA_DRIVER_VERSION}/cua-driver"
 
 
 def run(context: RunContext) -> None:

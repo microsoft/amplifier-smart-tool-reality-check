@@ -5,7 +5,7 @@ import shlex
 import shutil
 import tempfile
 
-from common import collect_in_environment, providers
+from common import capability, collect_in_environment, providers, usage
 from common.capability import CapabilityResult
 from common.context import RunContext
 from common.environment import HOME, WORK, Environment
@@ -32,7 +32,10 @@ def baseline(env: Environment, context: RunContext) -> Baseline:
 
 
 def standard(env: Environment, context: RunContext, result: CapabilityResult, baseline: Baseline) -> None:
-    """Copy what the agent did into the run: its record, session, logs, changed files, packages, and containers."""
+    """Copy what the agent did into the run: its record, session, logs, changed files, packages, and containers.
+
+    In an installed run, also sums the usage of the checks the agent ran with reality-check, apart from its own.
+    """
     provider = providers.provider(context.spec.agent_provider)
     env.run_checked("work", f"sudo mkdir -p {WORK} && sudo chown user {WORK}")
     env.push(IN_ENVIRONMENT, f"{WORK}/collect.py")
@@ -40,6 +43,7 @@ def standard(env: Environment, context: RunContext, result: CapabilityResult, ba
         "since": baseline.since,
         "out": f"{WORK}/out",
         "check_directory": result.record_directory,
+        "agent_checks": result.agent_checks,
         "session_id": result.outcome.get("session_id"),
         "sessions": home(provider.sessions),
         "logs": [home(path) for path in provider.logs],
@@ -65,6 +69,11 @@ def standard(env: Environment, context: RunContext, result: CapabilityResult, ba
     report = context.directory / "check" / "report.md"
     if report.is_file():
         shutil.copy2(report, context.directory / "report.md")
+    if context.spec.capability == "installed":
+        checks = sorted((context.directory / "checks").glob("*/events.jsonl"))
+        context.record.usage["agent_checks"] = usage.summarize(
+            [event for events in checks for event in capability.events(events)]
+        )
 
 
 def home(path: str) -> str:

@@ -35,6 +35,10 @@ home.mkdir(exist_ok=True)
 (home / "auth.json").write_text(json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"]}))
 (home / "auth.json").chmod(0o600)'"""
 
+# The agent provider reality-check runs its checks with in an installed run, whatever CLI the agent is: its extra is
+# the only one installed, so it is the one reality-check picks.
+INSTALLED_CHECKS: AgentProvider = "copilot"
+
 PROVIDERS: dict[AgentProvider, Provider] = {
     "copilot": Provider(
         extra="copilot",

@@ -26,6 +26,8 @@ DESCRIPTION = (
     "also adds assets/highlighting-tests/wide-chars.txt, a sample with wide characters. The agent must build the "
     "editor, drive it in a terminal, and notice both."
 )
+# Installed is the trigger tasks' own evaluation of whether an agent chooses reality-check.
+CAPABILITIES = ("reality-check", "baseline")
 REQUEST = (
     "Can you check that Replace All in edit holds up in real use, for people writing in any language, including "
     "fixing a replace they did not mean?"

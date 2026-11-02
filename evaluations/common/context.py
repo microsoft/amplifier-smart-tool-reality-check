@@ -13,8 +13,9 @@ from pydantic import BaseModel, Field
 from reality_check.schemas import AgentProvider, ReasoningEffort
 
 RunStatus = Literal["running", "completed", "failed"]
-# reality-check's check-software, or the baseline: the agent provider's own CLI given the same request.
-Capability = Literal["reality-check", "baseline"]
+# reality-check's check-software; the baseline: the agent provider's own CLI given the same request; or installed: that
+# CLI given the request with reality-check's skill and CLI installed, to use or not as it decides.
+Capability = Literal["reality-check", "baseline", "installed"]
 
 
 class EvaluationError(Exception):
@@ -125,7 +126,10 @@ class RunContext:
 
     def save(self) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
-        (self.directory / "run.json").write_text(self.record.model_dump_json(indent=2), encoding="utf-8")
+        # Written whole and then renamed, so `run.py waiting` and `stop` never read a partly written file.
+        partial = self.directory / "run.json.partial"
+        partial.write_text(self.record.model_dump_json(indent=2), encoding="utf-8")
+        partial.replace(self.directory / "run.json")
 
     def report(self, line: str) -> None:
         """A progress line, prefixed with the run's id."""

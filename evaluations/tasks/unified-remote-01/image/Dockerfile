@@ -8,10 +8,10 @@ RUN apt-get update \
         ca-certificates curl dbus git libpam-systemd openssh-server sudo systemd systemd-sysv \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.12.2 /uv /uvx /usr/local/bin/
-# Lingering starts the user's service manager, and so Unified, at boot rather than at first login.
-RUN --mount=type=secret,id=password,required=true userdel --remove ubuntu \
+# Lingering starts the user's service manager, and so Unified, at boot rather than at first login. The task sets the
+# user's password in each run.
+RUN userdel --remove ubuntu \
     && useradd -m -s /bin/bash -G sudo user \
-    && echo "user:$(cat /run/secrets/password)" | chpasswd \
     && mkdir -p /var/lib/systemd/linger \
     && touch /var/lib/systemd/linger/user
 USER user

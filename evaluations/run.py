@@ -3,6 +3,9 @@
 uv run evaluations/run.py list
 uv run evaluations/run.py run --task excalidraw-01 --model gpt-6.1-sol --repeat 3
 uv run evaluations/run.py run --capability baseline
+uv run evaluations/run.py run --task trigger-verify-01 --capability installed
+uv run evaluations/run.py waiting
+uv run evaluations/run.py stop trigger-verify-01-installed-copilot-gpt-6.1-sol-1
 uv run evaluations/run.py cleanup
 """
 
@@ -19,7 +22,7 @@ import traceback
 from types import ModuleType
 from typing import Annotated, get_args
 
-from common import baselines, providers
+from common import baselines, idle, providers
 from common.context import Capability, EvaluationError, Live, RunContext, RunRecord, RunSpec
 from common.environment import destroy_leftovers
 import typer
@@ -96,7 +99,9 @@ def run(
     capability: Annotated[
         Capability,
         typer.Option(
-            "--capability", help="reality-check, or baseline: the agent provider's own CLI given the same request."
+            "--capability",
+            help="reality-check; baseline: the agent provider's own CLI given the same request; or installed: that "
+            "CLI with reality-check installed.",
         ),
     ] = "reality-check",
     agent_provider: Annotated[AgentProvider, typer.Option("--agent-provider")] = "copilot",
@@ -126,9 +131,10 @@ def run(
     """
     try:
         tasks, skipped = supporting({name: load_task(name) for name in (task or task_names())}, capability)
-        if capability == "baseline":
+        if capability in ("baseline", "installed"):
             baselines.baseline(agent_provider)
-        for name in dict.fromkeys([agent_provider, judge_agent_provider]):
+        checks = [providers.INSTALLED_CHECKS] if capability == "installed" else []
+        for name in dict.fromkeys([agent_provider, *checks, judge_agent_provider]):
             providers.export_credentials(name)
     except EvaluationError as error:
         raise typer.BadParameter(str(error)) from error
@@ -179,10 +185,60 @@ def run(
                     "capability_seconds": record.capability_seconds,
                     "aiu": record.usage.get("capability", {}).get("aiu"),
                     "usd": record.usage.get("capability", {}).get("usd"),
+                    "agent_checks_aiu": record.usage.get("agent_checks", {}).get("aiu"),
+                    "agent_checks_usd": record.usage.get("agent_checks", {}).get("usd"),
                     "error": record.error,
                 }
             )
         )
+
+
+@app.command()
+def waiting(
+    batch: Annotated[
+        str | None,
+        typer.Argument(
+            metavar="BATCH", help="A batch directory, or its name under evaluations/runs. The newest when omitted."
+        ),
+    ] = None,
+) -> None:
+    """Show each running baseline or installed run's agent: whether it ended its turn, and what runs under its CLI.
+
+    Reads the twin and changes nothing, so the operator can judge whether to `stop` a run.
+    """
+    try:
+        directory = idle.batch(RUNS_DIRECTORY, batch)
+        runs = idle.running(directory)
+    except EvaluationError as error:
+        raise typer.BadParameter(str(error)) from error
+    if not runs:
+        typer.echo(f"No baseline or installed run of {directory.name} is running its CLI.")
+    for each in runs:
+        try:
+            typer.echo(idle.describe(each, idle.look(each), datetime.now(UTC)))
+        except EvaluationError as error:
+            typer.echo(f"{each.run_id}: {error}")
+
+
+@app.command()
+def stop(
+    run_id: Annotated[str, typer.Argument(metavar="RUN", help="The run's id, which is its directory's name.")],
+    batch: Annotated[
+        str | None,
+        typer.Option("--batch", help="A batch directory, or its name under evaluations/runs. The newest when omitted."),
+    ] = None,
+    force: Annotated[bool, typer.Option("--force", help="Stop it even if its agent has not ended its turn.")] = False,
+) -> None:
+    """Stop a run's CLI as Ctrl+C does, with no further agent turn, once its agent has ended its turn.
+
+    Writes the run's `stopped.json` on the host, then sends SIGTERM to the CLI alone, never the processes under it.
+    The run then goes on to collect and judge, with the stop in its `outcome.stopped`.
+    """
+    try:
+        written = idle.stop(idle.batch(RUNS_DIRECTORY, batch) / run_id, force=force)
+    except EvaluationError as error:
+        raise typer.BadParameter(str(error)) from error
+    typer.echo(json.dumps(written, indent=2))
 
 
 @app.command()

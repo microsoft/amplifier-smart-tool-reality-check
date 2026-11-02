@@ -17,6 +17,8 @@ DESCRIPTION = (
     "only a Digital Twin Universe profile that runs it, as a user with their own custom build would. The agent must "
     "launch it, find a way to use it in a browser, and notice where the arrow ends sit after a shape moves."
 )
+# Installed is the trigger tasks' own evaluation of whether an agent chooses reality-check.
+CAPABILITIES = ("reality-check", "baseline")
 REQUEST = (
     "I have a custom version of excalidraw available in a DTU in .agents/digital-twin-universe/excalidraw. "
     "Can you please check that drawing shapes, moving them, and connecting them all work as expected?"

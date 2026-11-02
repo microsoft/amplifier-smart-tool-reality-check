@@ -15,6 +15,8 @@ DESCRIPTION = (
     "rest of the web, including the other family sites, is real. The agent gets no project and no target: it must "
     "go through all 22 tools and read what each Copy button actually puts on the clipboard."
 )
+# Installed is the trigger tasks' own evaluation of whether an agent chooses reality-check.
+CAPABILITIES = ("reality-check", "baseline")
 REQUEST = (
     "We are about to share the Smart Tools catalog at https://microsoft.github.io/amplifier-smart-tools-catalog/ "
     "widely. Can you give it a check?"
