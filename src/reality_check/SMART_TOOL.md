@@ -60,8 +60,10 @@ requires:
 
 Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding.
 
-**The library is the tool.** `reality_check.lib` holds every capability. The CLI is a thin
-wrapper over it, so anything you can do from the shell you can also do from Python.
+**The library is the tool.** `reality_check.lib` holds every capability. The CLI is a thin wrapper over it, so anything you can do from the shell you can also do from Python.
+Deterministic capabilities run with no provider configured. Model-backed capabilities go through GitHub Copilot, Amplifier Agent, Codex, or Claude.
+Every capability has its own skill. Read `reality-check <command> --help` before calling it: it carries the arguments, a worked invocation, and the result.
+The library source beside this file, `lib.py`, carries the signatures. The repository's `docs/01-library.md` and `docs/02-cli.md` have the rest.
 
 ## When to reach for it
 
@@ -70,16 +72,9 @@ wrapper over it, so anything you can do from the shell you can also do from Pyth
 - A broad pass over an app: every page, every settings submenu, a new user's first run.
 - A later check against an earlier one, to see what changed.
 
-Not for release gates, CI steps, or the same assertions on each change: scripted tests are
-faster and cheaper there, so say that to the caller instead of starting a check. Not for unit
-tests, load testing, or security testing.
-
-## Before writing code
-
-Every capability has its own skill. Read `reality-check <command> --help` before calling it: it
-carries the arguments, a worked invocation, and the result. Do not fill gaps
-from memory. The library source beside this file, `lib.py`, carries the signatures. The
-repository's `docs/01-library.md` and `docs/02-cli.md` carry the rest.
+Not for release gates, CI steps, or the same assertions on each change:
+scripted tests are faster and cheaper there, so say that to the caller instead of starting a check.
+Not for unit tests, load testing, or security testing.
 
 ## Install
 
@@ -125,43 +120,14 @@ provider, the first installed of `copilot`, `amplifier-agent`, `codex`, and `cla
   Microsoft Foundry credentials in the environment, see
   [authentication](https://code.claude.com/docs/en/agent-sdk/quickstart).
 
-Without one, a model-backed capability fails immediately and names what to configure; it
-never falls back to a deterministic answer.
-
-Every agent provider runs with its telemetry turned off.
-
+Without one, a model-backed capability fails immediately and names what to configure; it never falls back to a deterministic answer.
 Runs on Linux, macOS, and Windows.
 
-## Straight and smart paths
+## Running Checks
 
-Deterministic capabilities run with no provider configured. Model-backed capabilities go
-through GitHub Copilot, Amplifier Agent, Codex, or Claude, and say so in their help text.
-
-## Output and failure contract
-
-Results go to stdout, diagnostics to stderr. A failure prints a message naming what went
-wrong and how to fix it, and exits non-zero: 1 for a failure the tool can name, 2 for a
-bad invocation. Never treat an empty result as success.
-
-`check-software` runs for minutes: start it with `--detach`, which prints its `started` event
-and exits, then follow it with `read-check-activity --after-event <last id>` until a `finished` or
-`failed` event. `list-intelligence-models` lists the models it runs on.
-
-## After a check
-
-The report is the check's final message, also saved as `report.md` in the check's directory.
-It gives a verdict per item asked about (pass, fail, or not checked) and the evidence files
-each stands on, relative to that directory. Not checked is never a pass. Give the caller the
-verdicts and each failure's step, action, and what was recorded. The report's Next steps section
-guides the calling agent on possible investigation, fixes, and rechecks. Use it within the
-caller's authorized scope; ask before actions that need further approval. After
-a fix, check again with `--resume <check_id>`, the command the result's `next` names.
-
-To find an earlier check without its ID, `list-checks` lists every check on this machine. For the
-person you work for, the app shows every check with its report and evidence. With the MCP server
-registered, call its `open_app` tool with the check's ID: hosts that render MCP Apps show
-it inline. Without it, `reality-check app` shows it in their browser. `mcp --help` says how to
-register the server.
+The main capability is `check-software`: it checks software as a user would and ends with a report and its evidence.
+Read `reality-check check-software --help` before starting a check.
+The other capabilities serve it: follow, steer, or cancel a running check, read or list checks, show them to the person in the app, and list the models a check runs on.
 
 ## Choosing a surface
 

@@ -1,31 +1,37 @@
-`check-software` checks software the way a real user would. An agent investigates the request,
-reaches and uses the software, gathers evidence such as screenshots, requests, console messages,
-and timings, and ends with a Markdown report: a verdict per item asked about, with the evidence
-files each one stands on. A check runs for minutes. It streams events while it works, can be
-steered or cancelled from any process, and can be resumed with a follow-up.
+`check-software` checks software the way a real user would.
+An agent investigates the request, reaches and uses the software, gathers evidence such as screenshots, requests, console messages, and timings, and ends with a Markdown report.
+A check runs for minutes, often longer than an agent's shell timeout, and prints every event as it goes.
 
-The report starts with a short summary, then Needs attention, Observations, What was checked,
-Next steps, and Run details. Relevant screenshots are embedded beside findings. Next steps
-guide the calling agent on possible actions and rechecks, within the caller's authorized scope.
-
-Use it to check a feature or fix as a user would, or to find out why a scripted test fails. Do
-not use it as a release gate or a CI step, or to run the same assertions again on each change.
+Use it to check a feature or fix as a user would, or to find out why a scripted test fails.
+Do not use it as a release gate or a CI step, or to run the same assertions again on each change.
 Scripted tests are faster and cheaper there. Say that to the caller instead of starting a check.
 
-A check runs longer than most shell timeouts, so start it with `--detach`: it runs in a process of
-its own, and the command prints the `started` event and exits. Follow it with `read-check-activity`,
-each time after the last event `id` you read:
+Start it with `--detach`: the check runs in a process of its own that outlives yours, and the command prints the `started` event and exits.
+Follow it with `read-check-activity`, whose `--help` says how to read only what you need, and steer or cancel it from any process:
 
 ```bash
 reality-check check-software --request "Check that a new user can sign up and send a message" \
   --target http://localhost:3000 --detach --origin claude-code:<session id>
-reality-check read-check-activity --check-id 20261013-142501-3f9a1c --after-event 1   # again until it ends
+reality-check read-check-activity --check-id 20261013-142501-3f9a1c --tail-events 3
+reality-check read-check-activity --check-id 20261013-142501-3f9a1c --after-event 48   # again until it ends
 reality-check steer-check --check-id 20261013-142501-3f9a1c --message "Use the test account in notes.md"
 reality-check cancel-check --check-id 20261013-142501-3f9a1c
 ```
 
-Without `--detach`, the command runs the check to its end and prints every event; run it in the
-background with its output in a file (`> check.jsonl 2> check.log &`) and read the file.
+Leave out `--detach` when the check should stop when your process does, or when a script needs the exit code to say how the check ended.
+check-software's stdout is every event, tens of kilobytes for a short check and far more for a long one.
+That is why it is best to run it in the background with its output in a file:
+
+```bash
+reality-check check-software --request "Check that a new user can sign up" --target http://localhost:3000 \
+  > check.jsonl 2> check.log &
+```
+
+A script gets the exit code with `wait $!`.
+
+The file's first line has the `check_id`: follow the check with `read-check-activity` as above, or read only the file's new lines.
+Either way, read the end: the last line is `finished`, carrying the whole report and the result, or `failed`.
+A file that ends without one means the process was killed.
 
 ```python
 from reality_check.lib import check_software
@@ -37,15 +43,6 @@ result = await run.result()
 result.status, result.report, result.next
 ```
 
-When the check stops to ask, its report says what it needs. Answer with a new check that
-resumes it, which continues the same agent session:
-
-```bash
-reality-check check-software --resume 20261013-142501-3f9a1c --request "I signed in; go on" --detach
-```
-
-A check whose process died, a `crashed` state in `read-check-activity`, is resumed the same way.
-
 Desktop apps need computer use. When it is not installed, the check's agent installs it with
 `reality-check install-computer-use` and goes on; when the install fails, the agent says why.
 
@@ -56,7 +53,7 @@ Desktop apps need computer use. When it is not installed, the check's agent inst
 - `--target TARGET`: where the software is: a URL, a universe id, a profile, a path, or a
   description. Leave it out when the request says.
 - `--resume CHECK_ID`: an earlier check to continue, in the same agent session on the same agent
-  provider. It must have ended `done`, `cancelled`, or `timed-out`.
+  provider. Any check that is not running: `done`, `cancelled`, `timed-out`, or `crashed`.
 - `--previous-checks PATH`: an earlier check's directory, repeatable. The agent gets the paths,
   also on `--resume`; the request says what to do with them, such as "compare against the earlier
   check".
@@ -92,34 +89,38 @@ Desktop apps need computer use. When it is not installed, the check's agent inst
 
 ## Result
 
-Each event is one JSON line on stdout, written and flushed at once: `id`, `check_id`, `time`,
-`kind`, `text`, and `data`. The `id` is the event's line in the check's `events.jsonl`, which keeps
-every event whole. Stdout has each in short form: a string longer than 500 characters is cut and
-ends with where it is whole, such as `...[cut at 500 of 3,319 chars; full: line 64 of events.jsonl]`.
+Each event is one JSON line: `id`, `check_id`, `time`, `kind`, `text`, and `data`.
+The `id` is its line in the check's `events.jsonl`, which keeps every event whole and adds a `usage` event per model call.
+Stdout has the short form: a string longer than 500 characters is cut and says where it is whole, such as `...[cut at 500 of 3,319 chars; full: line 64 of events.jsonl]`.
 The kinds:
 
-- `started`: always first; `data` has the check's `directory`, its request, and `files`: the path of
-  its `events`, `report`, and, when detached, `process_log`, each with when to read it.
+- `started`: always first; `data` has the check's `directory`, its request, and `files`, each path with when to read it.
 - `progress`: what the agent is doing, in its words.
 - `reasoning`: what the agent thought, when the model thinks.
-- `tool`: a tool the agent called (`data.phase` `call`) or its result (`result`), with
-  `data.tool_call_id`; its full arguments and result are in `events.jsonl`.
+- `tool`: a tool call (`data.phase` `call`) or its result (`result`), paired by `data.tool_call_id`; the full arguments and result are in `events.jsonl`.
 - `steered`: a steering message was delivered.
-- `finished`: always last when the check ends; `data` is the result, its report never cut.
-- `failed`: always last when the check fails; `data` has `code`, `message`, and `remedy`.
+- `finished`: always last when the check ends; `data` is the result.
+- `failed`: always last when the check fails; `data` has `code`, `message`, and `remedy`. A timeout is `check-timeout`, with the result in `data.result`.
 
-`events.jsonl` also has a `usage` event for each model call; the result's `usage` sums them. A file
-that ends without `finished` or `failed` means the process was killed.
+The result: `check_id`, `status` (`done`, `cancelled`, or `timed-out`), `session_id`, `agent_provider`, `report` (Markdown, never cut), `directory`, `next` (the exact command that resumes the check), `timeout_seconds`, `elapsed_seconds`, and `usage` (tokens and billing, summed over model calls).
 
-The result: `check_id`, `status` (`done`, `cancelled`, or `timed-out`), `session_id`,
-`agent_provider`, `report` (the agent's final message, in Markdown), `directory`, `next`, the exact
-command that resumes the check, `timeout_seconds`, `elapsed_seconds`, and `usage`: `model_calls`,
-`fresh_input_tokens`, `cache_read_tokens`, `cache_write_tokens`, `output_tokens`,
-`reasoning_tokens`, and `billing` by unit, such as `USD` or `AIU`. A check that times out ends with
-`failed`, code `check-timeout`, whose `data.result` is the result. The check's directory, `<checks-directory>/<check_id>/`, keeps
-`check.json`, `events.jsonl`, `report.md`, the agent's `session/`, the `images/` it was shown, and,
-when detached, `process.log`.
+Exits 0 on `done`, even when the report says the software failed, and 1 on `cancelled`, `timed-out`, or a failure.
+Without `--detach`, Ctrl+C, SIGTERM, and closing the console cancel the check; its session can still be resumed.
+A detached check does not get them: stop it with `cancel-check`.
 
-A report that says the software failed is a result: exits 0 on `done`, 1 on
-`cancelled`, `timed-out`, or a failure. Ctrl+C, SIGTERM, and closing the console cancel the check; its session
-can still be resumed.
+## After the check
+
+The report starts with a short summary, then Needs attention, Observations, What was checked, Next steps, and Run details.
+It gives a verdict per item asked about, pass, fail, or not checked, with the evidence files each stands on, relative to the check's directory.
+Not checked is never a pass.
+Tell the user what the check found, not only what you changed: the verdicts, each failure's step, action, and what was recorded, and the report's path.
+Next steps suggest investigations, fixes, and rechecks; act on them within the caller's authorized scope, and ask before anything that needs further approval.
+
+When the check stopped to ask, its report says what it needs.
+Answer it, or check again after a fix, with the command the result's `next` names; it continues the same agent session:
+
+```bash
+reality-check check-software --resume 20261013-142501-3f9a1c --request "I signed in; go on" --detach
+```
+
+`list-checks` finds an earlier check without its ID.

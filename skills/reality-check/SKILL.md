@@ -33,13 +33,16 @@ reality-check install-computer-use
 ```
 ## Use it
 
-Run `reality-check --help`. It prints the tool's skill: when to use it, every capability, sharp
-edges, and which files to read. Follow it. Then read the capability's own skill with
-`reality-check <command> --help` before calling it: it carries the arguments, a worked
-invocation, the result, and the failures. Never work from memory.
+Run `reality-check --help`.
+It prints the tool's skill: when to use it, every capability, which files to read, etc.
+Read each capability's own skill with `reality-check <command> --help` before calling it:
+it carries the arguments, a worked invocation, the result, etc.
+The main smart capability is `reality-check check-software --request "Check that a new user can sign up and send a message"`,
+which uses an Agent SDK like Copilot SDK or Amplifier Agent to validate software.
 
-To show the user their checks, call the MCP tool `open_app` with the check's ID. Hosts that
-render MCP Apps show it inline; the rest get a URL to give the user as a browser view. If
-`open_app` is not among your tools, the MCP server is not registered or the host has not reloaded
-it: `reality-check mcp --help` says how to register it. Without it, start
-`reality-check app` in the background, since it serves until stopped, and give them the URL it prints.
+To show the user their checks, call the MCP tool `open_app` with the check's ID.
+Hosts that render MCP Apps show it inline; the rest get a URL to give the user as a browser view.
+If `open_app` is not among your tools, the MCP server is not registered or the host has not reloaded
+it: `reality-check mcp --help` says how to register it.
+Without it, start `reality-check app` in the background, since it serves until stopped,
+and give them the URL it prints or open it automatically if your host supports it.
