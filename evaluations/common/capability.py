@@ -1,6 +1,7 @@
 """Runs the run's capability in the twin from the user's project, and reads what it reported.
 
 The capability is `reality-check check-software`, or the baseline: the agent provider's own CLI given the request.
+An installed run is the baseline with reality-check installed, which the CLI may use or not.
 """
 
 from datetime import datetime
@@ -10,7 +11,7 @@ import shlex
 from typing import Any
 import uuid
 
-from common import baselines, usage
+from common import baselines, idle, usage
 from common.context import RunContext
 from common.environment import PROJECT, Environment
 from pydantic import BaseModel, Field
@@ -33,6 +34,9 @@ class CapabilityResult(BaseModel):
     record_directory: str | None
     report: str | None = Field(description="The report's path in the twin; None when it is only in the run")
     where: dict[str, str] = Field(description="What else the capability left in the twin, label to path, for the judge")
+    agent_checks: list[str] = Field(
+        default_factory=list, description="The directories of the checks the agent ran with reality-check itself"
+    )
 
 
 def run(
@@ -49,8 +53,8 @@ def run(
 ) -> CapabilityResult:
     """Run the run's capability on `request` and record how it ended.
 
-    reality-check gets every argument. The baseline gets the request with the target added, and the timeout; the rest
-    are reality-check's own.
+    reality-check gets every argument. The baseline and installed get the request with the target added, and the
+    timeout; the rest are reality-check's own.
     """
     match context.spec.capability:
         case "reality-check":
@@ -66,7 +70,7 @@ def run(
                 resume=resume,
                 checks_directory=checks_directory,
             )
-        case "baseline":
+        case "baseline" | "installed":
             return baseline(env, context, request, target=target, timeout_seconds=timeout_seconds)
 
 
@@ -143,14 +147,19 @@ def baseline(
     """Give the request to the agent provider's own CLI, with every tool, path, and URL allowed, and read what it did.
 
     Writes `events.jsonl`, `report.md` from its last message, and `logs/capability.stderr`, and fills the record's
-    outcome, capability time, and usage.
+    outcome, capability time, and usage. In an installed run, also finds the checks the agent ran with reality-check.
+    When an operator stopped the CLI, the outcome has the stop, and the capability time ends at the agent's last event
+    before it.
     """
     cli = baselines.baseline(context.spec.agent_provider)
     session_id = str(uuid.uuid4())
     arguments = cli.command(
         baselines.prompt(request, target), context.spec.model, context.spec.reasoning_effort, session_id
     )
-    context.record.capability = "baseline"
+    context.record.capability = context.spec.capability
+    # Saved before the CLI starts, so `run.py waiting` and `stop` find its session and process while it runs.
+    context.record.outcome = {"session_id": session_id}
+    context.save()
     ran = env.capture(
         "capability",
         f"timeout --kill-after=30 {timeout_seconds} {shlex.join(arguments)}",
@@ -164,22 +173,41 @@ def baseline(
     outcome = reading.outcome | {"session_id": session, "exit_code": ran.exit_code}
     if ran.exit_code == TIMED_OUT:
         outcome |= {"status": "timed-out", "error": f"the CLI ran past {timeout_seconds} seconds and was stopped"}
+    seconds = reading.seconds
+    stop = idle.read_stop(context.directory, cli.worked(found))
+    if stop is not None:
+        outcome["stopped"], seconds = stop
     if reading.report:
         (context.directory / "report.md").write_text(reading.report, encoding="utf-8")
     records = env.capture("capability-usage", cli.usage(session), timeout_seconds=300)
+    checks = agent_checks(env) if context.spec.capability == "installed" else []
     result = CapabilityResult(
         events=found,
         outcome=outcome,
-        seconds=reading.seconds,
+        seconds=seconds,
         usage=cli.read_usage(records.stdout),
         record_directory=None,
         report=None,
-        where={},
+        where={
+            f"The record of check {Path(directory).name}, which it ran with reality-check, with its report in "
+            "`report.md`, its events in `events.jsonl`, and the evidence it gathered in `evidence/`": directory
+            for directory in checks
+        },
+        agent_checks=checks,
     )
     context.record.outcome = result.outcome
     context.record.capability_seconds = result.seconds
     context.record.usage["capability"] = result.usage
     return result
+
+
+def agent_checks(env: Environment) -> list[str]:
+    """The directories of every check reality-check knows of in the twin, which only the agent can have run."""
+    listed = env.run("agent-checks", "reality-check list-checks", timeout_seconds=120)
+    # The agent may have removed or broken the install; the step's log keeps what the command said.
+    if listed.exit_code != 0:
+        return []
+    return [f"{check['project']['checks_directory']}/{check['check_id']}" for check in json.loads(listed.stdout)]
 
 
 def events(stdout: Path) -> list[dict[str, Any]]:

@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -100,7 +101,6 @@ UNIVERSE_CA_BUNDLE = "/etc/dtu/ca.crt"
 UNIFIED_REPOSITORY = "https://github.com/microsoft/amplifier-unified"
 # `systemctl --user` outside a login session finds the user's service manager through this.
 USER_SERVICES = "export XDG_RUNTIME_DIR=/run/user/$(id -u)"
-PASSWORD = "lantern-orchard-58"
 DESCRIPTION = (
     "Amplifier Unified, a self-hosted web app, on a second machine in the environment, home-server-2, set up for "
     "LAN access as its docs/DEPLOYMENT.md describes: a public origin, HTTPS from Unified's own local CA, a LAN bind, "
@@ -115,6 +115,8 @@ DESCRIPTION = (
     "agent must reach the server over its LAN URL without turning off certificate checks, and sign in as the user "
     "does."
 )
+# Installed is the trigger tasks' own evaluation of whether an agent chooses reality-check.
+CAPABILITIES = ("reality-check", "baseline")
 REQUEST = (
     "I just updated Unified on my home server, https://home-server-2:8941. My password is in "
     "~/.config/home-server-2-password. Can you make sure everything is healthy after the update?"
@@ -263,8 +265,6 @@ def _build_images(context: RunContext, release: str, checkout: Path) -> None:
     """Build the server's and the router's images with the host's Docker, where the profile's services run them."""
     builds = {
         SERVER_IMAGE: [
-            "--secret",
-            "id=password,env=HOME_SERVER_2_PASSWORD",
             "--build-arg",
             f"RELEASE={release}",
             "--build-context",
@@ -281,7 +281,6 @@ def _build_images(context: RunContext, release: str, checkout: Path) -> None:
                 ["docker", "build", "--tag", image, *arguments],
                 stdout=output,
                 stderr=subprocess.STDOUT,
-                env=os.environ | {"HOME_SERVER_2_PASSWORD": PASSWORD},
             )
             if built.returncode != 0:
                 raise EvaluationError(f"Building {image} failed; see {log}.")
@@ -310,6 +309,8 @@ def _place(env: Environment) -> str:
         "&& chmod 600 ~/.ssh/authorized_keys",
         user="user",
     )
+    password = secrets.token_urlsafe(16)
+    env.exec_service_checked(SERVER, "set-password", f"printf 'user:%s\\n' {password} | chpasswd")
     host_key = " ".join(
         env.exec_service_checked(SERVER, "host-key", "cat /etc/ssh/ssh_host_ed25519_key.pub").stdout.split()[:2]
     )
@@ -319,7 +320,7 @@ def _place(env: Environment) -> str:
             f"Host {SERVER}\n    User user\n    IdentityFile ~/.ssh/id_ed25519\n", encoding="utf-8"
         )
         (files / "known_hosts").write_text(f"{SERVER} {host_key}\n", encoding="utf-8")
-        (files / "password").write_text(f"{PASSWORD}\n", encoding="utf-8")
+        (files / "password").write_text(f"{password}\n", encoding="utf-8")
         env.pull_service(SERVER, SERVER_CA, files / "ca.crt")
         env.push(files / "config", f"{HOME}/.ssh/config")
         env.push(files / "known_hosts", f"{HOME}/.ssh/known_hosts")

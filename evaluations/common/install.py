@@ -13,6 +13,7 @@ from common.context import Capability, EvaluationError, RunContext
 from common.environment import HOME, REPOSITORY_URL, Environment
 
 REPOSITORY = Path(__file__).resolve().parents[2]
+SKILL = REPOSITORY / "skills" / "reality-check"
 TOOL_BIN = f"{HOME}/.local/share/uv/tools/reality-check/bin"
 DTU = f"{TOOL_BIN}/digital-twin-universe"
 # Digital Twin Universe installed on its own, for the judge of a run without reality-check.
@@ -25,6 +26,8 @@ def setup(env: Environment, context: RunContext, computer_use: bool = False) -> 
 
     For reality-check: the agent providers' prerequisites, reality-check, and with `computer_use`, its computer use.
     For the baseline: the agent provider's own CLI and nothing else; the judge's needs wait for `judge_prerequisites`.
+    For installed: what reality-check needs to run its checks with `providers.INSTALLED_CHECKS`, then the agent
+    provider's own CLI, and reality-check's skill where that CLI finds a user's skills.
     """
     match context.spec.capability:
         case "reality-check":
@@ -33,13 +36,24 @@ def setup(env: Environment, context: RunContext, computer_use: bool = False) -> 
                 env.run_checked("install-computer-use", "reality-check install-computer-use")
         case "baseline":
             agent_cli(env, context)
+        case "installed":
+            provider_and_reality_check(env, context)
+            if computer_use:
+                env.run_checked("install-computer-use", "reality-check install-computer-use")
+            agent_cli(env, context)
+            skill(env, context)
 
 
 def provider_and_reality_check(env: Environment, context: RunContext) -> None:
-    """Install what the run's agent providers need, then reality-check, and record the versions installed."""
-    for name in dict.fromkeys([context.spec.agent_provider, context.spec.judge_agent_provider]):
+    """Install what the run's agent providers need, then reality-check, and record the versions installed.
+
+    reality-check gets the extra of the agent provider it runs its checks with: the run's, or in an installed run,
+    `providers.INSTALLED_CHECKS`, whatever CLI the agent is.
+    """
+    checks = providers.INSTALLED_CHECKS if context.spec.capability == "installed" else context.spec.agent_provider
+    for name in dict.fromkeys([context.spec.agent_provider, checks, context.spec.judge_agent_provider]):
         env.run_checked(f"setup-{name}", providers.provider(name).setup)
-    extra = providers.provider(context.spec.agent_provider).extra
+    extra = providers.provider(checks).extra
     # The checkout uv cloned holds the evaluations' tasks and answer keys; the installed tool does not need it.
     env.run_checked("install", f"uv tool install {shlex.quote(spec(extra))} && rm -rf {HOME}/.cache/uv/git-v*")
     listed = env.run_checked("versions", f"uv pip list --python {TOOL_BIN}/python --format json", timeout_seconds=60)
@@ -59,14 +73,24 @@ def agent_cli(env: Environment, context: RunContext) -> None:
     installed = found.group() if found else printed.strip()
     if installed != pin.version:
         raise EvaluationError(f"The baseline installed {context.spec.agent_provider} {installed}, not {pin.version}.")
-    context.record.versions = {
+    context.record.versions |= {
         "repository": _repository_version(),
         "baseline": {"agent_provider": context.spec.agent_provider, "cli": installed, "pinned_by": pin.pinned_by},
     }
 
 
+def skill(env: Environment, context: RunContext) -> None:
+    """Copy this checkout's reality-check skill into the user's skills, the README's install when `npx skills` fails.
+
+    The skills are where the agent provider's own CLI loads them from.
+    """
+    skills = baselines.baseline(context.spec.agent_provider).skills
+    env.run_checked("skill-directory", f"mkdir -p {skills}")
+    env.push(SKILL, f"{skills}/{SKILL.name}")
+
+
 def judge_prerequisites(env: Environment, context: RunContext) -> None:
-    """After a baseline, install what the judge needs that the capability did not; nothing for reality-check.
+    """After a baseline, install what the judge needs that the capability did not; nothing if reality-check is installed.
 
     That is the judge provider's prerequisites, and Digital Twin Universe at the version reality-check pins, at
     `STANDALONE_DTU`.
@@ -80,7 +104,7 @@ def judge_prerequisites(env: Environment, context: RunContext) -> None:
 
 def dtu(capability: Capability) -> str:
     """The Digital Twin Universe the judge of a `capability` run can launch universes with."""
-    return DTU if capability == "reality-check" else STANDALONE_DTU
+    return STANDALONE_DTU if capability == "baseline" else DTU
 
 
 def spec(extra: str) -> str:
@@ -91,7 +115,10 @@ def spec(extra: str) -> str:
 def _dtu_requirement() -> str:
     with (REPOSITORY / "pyproject.toml").open("rb") as file:
         dependencies = tomllib.load(file)["project"]["dependencies"]
-    return next(line for line in dependencies if line.startswith("digital-twin-universe"))
+    requirement = next((line for line in dependencies if line.startswith("digital-twin-universe")), None)
+    if requirement is None:
+        raise EvaluationError(f"{REPOSITORY / 'pyproject.toml'} has no digital-twin-universe dependency.")
+    return requirement
 
 
 def _repository_version() -> dict[str, Any]:

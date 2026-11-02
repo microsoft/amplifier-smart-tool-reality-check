@@ -1,9 +1,10 @@
 """Runs inside the evaluation environment after the capability, as root, with the system Python's standard library.
 
 `collect_in_environment.py CONFIG` gathers, into one directory, everything that shows what the agent did: its
-record if the capability keeps one, its session and logs, every file it made or changed since the baseline, what is
-installed now, and the containers on the nested Docker daemon. `collect.py` on the host imports PACKAGE_LISTS and
-`installed_diff` from here, so the baseline needs no file in the environment.
+record if the capability keeps one, the checks it ran with reality-check itself, its session and logs, every file it
+made or changed since the baseline, what is installed now, and the containers on the nested Docker daemon.
+`collect.py` on the host imports PACKAGE_LISTS and `installed_diff` from here, so the baseline needs no file in the
+environment.
 """
 
 import difflib
@@ -65,8 +66,13 @@ def collect(config_path: Path) -> None:
         # agent provider keeps its sessions.
         kept = Path(check) / "session"
         session = kept if kept.is_dir() else Path(config["sessions"]) / str(session_id)
+    for directory in config.get("agent_checks", []):
+        if Path(directory).is_dir():
+            shutil.copytree(directory, out / "checks" / Path(directory).name, symlinks=True, ignore=IGNORED_IN_COPIES)
     if session_id and session.is_dir():
         shutil.copytree(session, out / "session", symlinks=True, ignore=IGNORED_IN_COPIES)
+    elif session_id:
+        transcript(Path(config["sessions"]), str(session_id), out / "session")
     for logs in config.get("logs", []):
         if Path(logs).is_dir():
             shutil.copytree(logs, out / "logs" / "harness" / Path(logs).name, symlinks=True)
@@ -77,6 +83,20 @@ def collect(config_path: Path) -> None:
     state = HOME / ".digital-twin-universe"
     if state.is_dir():
         _copy_tree_limited(state, out / "logs" / "dtu-state")
+
+
+def transcript(sessions: Path, session_id: str, destination: Path) -> None:
+    """Copy a session kept as a file, not a directory: Claude Code's.
+
+    It is a transcript in the folder of the project it ran in, with a directory of the same name beside it for its
+    subagents.
+    """
+    for found in sessions.glob(f"*/{session_id}.jsonl"):
+        destination.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(found, destination / found.name)
+        beside = found.with_suffix("")
+        if beside.is_dir():
+            shutil.copytree(beside, destination / beside.name, symlinks=True, ignore=IGNORED_IN_COPIES)
 
 
 def _package_lists(directory: Path) -> None:

@@ -69,6 +69,8 @@ DESCRIPTION = (
     "commit, with nothing installed or built: the agent installs the .NET 10 SDK, runs the AppHost on the twin's "
     "Docker, finds the seeded customers' sign-in itself, and must slow its own network to see the defect."
 )
+# Installed is the trigger tasks' own evaluation of whether an agent chooses reality-check.
+CAPABILITIES = ("reality-check", "baseline")
 REQUEST = (
     "This is our shop. A lot of our customers are on bad mobile connections. Can you check that shopping works well "
     "for them?"
