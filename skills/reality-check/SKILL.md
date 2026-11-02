@@ -2,7 +2,7 @@
 name: reality-check
 description: >-
   Checks that an app works the way a real user would experience it and returns evidence for every finding. Drive it from the command line as `reality-check`, or from Python through `reality_check.lib`.
-  Use whenever a fix or capability needs to be validated: after you fix a bug, or build or change a feature, run reality-check before you report the work as done, so the report says what a user can actually do, not only what the code or tests suggest. 
+  Use whenever a fix or capability needs to be validated: after you fix a bug, or build or change a feature, run reality-check before you report the work as done, so the report says what a user can actually do, not only what the code or tests suggest.
   Also use when asked to check, verify, or make sure an app works, and when the user mentions "reality check" directly.
 license: MIT
 metadata:
