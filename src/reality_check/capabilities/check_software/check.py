@@ -983,10 +983,10 @@ def _dtu_command() -> str:
 
 
 def _install_command() -> str:
-    """`install-computer-use` from this environment's CLI, which need not be on the agent's PATH."""
+    """`install --component computer-use` from this environment's CLI, which need not be on the agent's PATH."""
     found = shutil.which(DISTRIBUTION, path=str(Path(sys.executable).parent))
     cli = _quoted(found) if found else f"{_quoted(sys.executable)} -m reality_check.cli"
-    return f"{cli} install-computer-use"
+    return f"{cli} install --component computer-use"
 
 
 def _path_directories(computer_use: ComputerUse | NotInstalled | Unavailable, uv: str | None) -> list[Path]:

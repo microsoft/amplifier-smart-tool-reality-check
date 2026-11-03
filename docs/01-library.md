@@ -207,15 +207,19 @@ def list_intelligence_models() -> IntelligenceModels
 
 The list is the models Reality Check supports and recommends, not what an agent provider offers, and changes only with the tool.
 
-## Install computer use
+## Install
 
-Installs cua-driver, which checks drive desktop apps with, once per machine. Deterministic: it asks no agent provider.
+Installs, once per machine, what checks use beyond the agent. Deterministic: it asks no agent provider.
 
 ```python
-def install_computer_use() -> ComputerUseInstall
+def install(components: list[Component] | None = None) -> Install
 ```
 
-The version is pinned with the SHA-256 of each release asset. An install of that version on PATH or from cua-driver's own installer is used as it is; otherwise the asset is downloaded, checked against its hash, and unpacked into reality-check's user data folder. The target is the desktop to drive: under WSL it is Windows, so the Windows build goes into the Windows user's LocalAppData. On macOS, `CuaDriver.app` goes into `/Applications`, where its permissions attach. Run again, it reports what is there.
+With no components named, it installs every one in `COMPONENTS` this machine supports; named, only those. It never raises for a component: `Install.installed` has what is there, each told apart by `component`, and `Install.not_installed` has the rest as `ComponentNotInstalled`, with the error's `code`, `message`, and `remedy`, and `unsupported` when this machine cannot run it as it is, such as computer use with no desktop. `complete` is false when a named component is not installed, or, with none named, when one is not installed for any reason but `unsupported`.
+
+`computer-use` is cua-driver, which checks drive desktop apps with. The version is pinned with the SHA-256 of each release asset. An install of that version on PATH or from cua-driver's own installer is used as it is; otherwise the asset is downloaded, checked against its hash, and unpacked into reality-check's user data folder. The target is the desktop to drive: under WSL it is Windows, so the Windows build goes into the Windows user's LocalAppData. On macOS, `CuaDriver.app` goes into `/Applications`, where its permissions attach. Run again, it reports what is there.
+
+`browser` is agent-browser, which drives web apps' UIs through a headless Chrome or Chromium. Its binary is pinned with the SHA-256 of each release asset, and its skills, which only the npm package carries, with that package's SHA-512 integrity; both are downloaded, checked, and moved into reality-check's user data folder, never taken from PATH. Every agent-browser process gets `AGENT_BROWSER_SKILLS_DIR` and `AGENT_BROWSER_NO_VERSION_CHECK=1`. A browser counts as working when `agent-browser doctor --offline` launches one; when none does, `agent-browser install` downloads Chrome for Testing, with `--with-deps` on Linux when running as root or sudo needs no password. Linux on arm64 or musl has no Chrome for Testing and needs the distribution's Chromium.
 
 ## What the agent gets
 
@@ -224,7 +228,7 @@ The check runs the way a sub-agent does: the agent provider's harness as it ship
 - The prompt. The template fills in the request, the target, the paths of the files the request names, the check's `evidence/` directory, the previous checks' directories, whether computer use is enabled, `ask_first`, and `keep_running`. It says what the report, the agent's final message, must cover, not how to do the work.
 - Skills: the ones in [Skills for checking software](#skills-for-checking-software), passed as skill directories, so the agent loads one only when the task needs it.
 - Digital Twin Universe: its CLI, by the path in this environment, and its skill. The agent uses it to launch a universe, to work in one the caller named, and to destroy what it launched, unless `keep_running` is set.
-- Computer use: when `install_computer_use` has run and the desktop allows it, the check starts the cua-driver daemon and gives the agent a command that runs cua-driver and the using-computer-use skill. When cua-driver is not installed, the prompt gives the agent `install-computer-use` and the command it will run through, and the check makes computer use ready as soon as the install is there. When it cannot be used for any other reason, the prompt says why and what enables it, and `ask_first` decides whether the agent stops. A daemon the check started is stopped when the last check using it ends; one the user started is left running.
+- Computer use: when `install` has run and the desktop allows it, the check starts the cua-driver daemon and gives the agent a command that runs cua-driver and the using-computer-use skill. When cua-driver is not installed, the prompt gives the agent `install --component computer-use` and the command it will run through, and the check makes computer use ready as soon as the install is there. When it cannot be used for any other reason, the prompt says why and what enables it, and `ask_first` decides whether the agent stops. A daemon the check started is stopped when the last check using it ends; one the user started is left running.
 
 Everything else, such as a browser on another machine or a tester the caller installed, the agent finds and uses on its own. When the agent needs more from Reality Check, it is added here, and not built in ahead of need.
 
@@ -307,6 +311,7 @@ def load_manifest() -> Manifest
 
 What an agent reads once it has decided to drive the tool: the manifest body and the capability list, wrapped so the reader knows where the tool's files are.
 Naming a capability returns that capability's own skill instead: the same wrapper, a heading carrying the capability's name, whether it is deterministic or model-backed, and the Markdown beside its code, which covers its arguments, a worked invocation, and its result.
+`install`'s skill ends with `## On this machine`, what it does here for each component, worked out on each call from local checks that download and run nothing.
 The CLI's `--help` prints exactly this, the tool's at the root and the capability's on a command.
 Raises `RealityCheckError` when the name is not a capability, naming the ones that are.
 

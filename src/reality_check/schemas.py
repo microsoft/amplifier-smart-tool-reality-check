@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, NamedTuple, get_args
+from typing import Annotated, Any, Literal, NamedTuple, get_args
 
 from pydantic import BaseModel, Field
 
@@ -419,11 +419,62 @@ ComputerUseTarget = Literal["windows", "wsl", "linux", "macos"]
 class ComputerUseInstall(BaseModel):
     """The cua-driver that checks drive desktop apps with."""
 
+    component: Literal["computer-use"] = "computer-use"
     target: ComputerUseTarget
     version: str
     executable: Path
     already_installed: bool = Field(description="Whether it was there already, so nothing was downloaded")
     remaining_step: str | None = Field(description="What the user still has to do by hand before checks can use it")
+
+
+# endregion
+
+# region: Browser
+
+
+class BrowserInstall(BaseModel):
+    """The agent-browser that checks drive web apps' UIs with, and the browser it launches."""
+
+    component: Literal["browser"] = "browser"
+    version: str
+    executable: Path = Field(description="The agent-browser binary")
+    skills_directory: Path = Field(description="agent-browser's skills, found through `AGENT_BROWSER_SKILLS_DIR`")
+    already_installed: bool = Field(
+        description="Whether it was there already and a browser launched, so nothing was downloaded"
+    )
+    remaining_step: str | None = Field(description="What the user still has to do by hand before checks can use it")
+
+
+# endregion
+
+# region: Install
+
+# What checks use beyond the agent, in the order `install` installs it.
+Component = Literal["computer-use", "browser"]
+COMPONENTS: tuple[Component, ...] = ("computer-use", "browser")
+ComponentInstall = Annotated[ComputerUseInstall | BrowserInstall, Field(discriminator="component")]
+
+
+class ComponentNotInstalled(BaseModel):
+    """A component `install` did not install, and why."""
+
+    component: Component
+    code: str
+    message: str
+    remedy: str
+    unsupported: bool = Field(
+        description="Whether this machine cannot run it as it is, such as computer use with no desktop"
+    )
+
+
+class Install(BaseModel):
+    """What `install` installed, or found already there, and what it did not."""
+
+    installed: list[ComponentInstall] = Field(description="Each told apart by its `component`")
+    not_installed: list[ComponentNotInstalled]
+    complete: bool = Field(
+        description="Whether everything asked for is installed; with nothing named, everything this machine supports"
+    )
 
 
 # endregion

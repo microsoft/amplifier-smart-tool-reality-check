@@ -7,7 +7,7 @@ from reality_check.capabilities.computer_use.target import Unavailable
 
 
 def computer_use_off(check_id: str, cache_directory: Path) -> Unavailable:
-    return Unavailable("cua-driver 0.36.0 is not installed.", "Run `reality-check install-computer-use`.")
+    return Unavailable("cua-driver 0.36.0 is not installed.", "Run `reality-check install --component computer-use`.")
 
 
 @pytest.fixture(autouse=True)

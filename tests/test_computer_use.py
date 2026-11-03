@@ -341,7 +341,9 @@ class Readied:
                 return ComputerUse(check_id, WSL, self.installed, self.command, True)
             return NotInstalled(WSL, self.installed, self.command)
         if self._outcome == "off":
-            return Unavailable("cua-driver 0.36.0 is not installed.", "Run `reality-check install-computer-use`.")
+            return Unavailable(
+                "cua-driver 0.36.0 is not installed.", "Run `reality-check install --component computer-use`."
+            )
         if self._outcome == "unsupported":
             return Unavailable("cua-driver has no build for the riscv64 architecture.", None)
         return ComputerUse(check_id, WSL, EXECUTABLE, self.command, self._accessibility)
@@ -394,7 +396,7 @@ async def test_the_prompt_says_why_computer_use_is_off_and_how_to_enable_it(
 
     off = (
         "Computer use is not enabled: cua-driver 0.36.0 is not installed. To enable it: Run `reality-check "
-        "install-computer-use`. This matters only for software that needs its desktop UI driven."
+        "install --component computer-use`. This matters only for software that needs its desktop UI driven."
     )
     assert f"{off}\n{check.ASK_FIRST[ask_first]}" in fake.runs[0].request.initial_message
 
@@ -493,7 +495,7 @@ async def test_without_an_install_the_agent_is_told_to_install_and_the_check_ena
     assert f"install it with `{check._install_command()}`" in prompt
     assert "enabled through the CLI `cua-driver` (`cua-driver status` says when it runs)" in prompt
     assert fake.runs[0].request.path_directories[0] == Path("/cache/abc")
-    assert check._install_command().endswith("install-computer-use")
+    assert check._install_command().endswith("install --component computer-use")
     assert len(readied.prepared) == 2
     assert readied.released == [run.check_id]
 

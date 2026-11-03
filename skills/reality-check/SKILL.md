@@ -25,8 +25,8 @@ uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-to
 # once, without installing
 uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check" reality-check --help
 
-# once, to check desktop apps
-reality-check install-computer-use
+# once, to give checks everything they can use
+reality-check install
 
 # once, to show checks inline: register `reality-check mcp` as a stdio MCP server in the
 # client, then reload its MCP servers. `reality-check mcp --help` has the details.

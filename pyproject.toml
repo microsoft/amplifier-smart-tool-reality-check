@@ -1,12 +1,12 @@
 [project]
 name = "reality-check"
-version = "0.6.1"
+version = "0.7.0"
 description = "Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do"
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
 dependencies = [
     "certifi>=2026.10.19,<2027.0.0",
-    "digital-twin-universe @ git+https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe@8435e711eff63d533475861962f267b91fc5917a",
+    "digital-twin-universe @ git+https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe@cb80c49a4fced2939fa59863db05c62e9a42688a",
     "fastapi>=0.141.1,<0.142.0",
     "filelock>=4.0.9,<5.0.0",
     "jsonschema>=4.26.0,<5.0.0",

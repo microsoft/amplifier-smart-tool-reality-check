@@ -1,22 +1,14 @@
 """Install the pinned cua-driver once, and find it again for every check."""
 
 from collections.abc import Iterator
-import contextlib
-import hashlib
 import os
 from pathlib import Path
 import re
-import secrets
 import shutil
-import ssl
 import subprocess
-import sys
 import tarfile
-from urllib.error import URLError
-from urllib.request import urlopen
 import zipfile
 
-import certifi
 import platformdirs
 
 from reality_check.capabilities.computer_use.target import (
@@ -26,6 +18,7 @@ from reality_check.capabilities.computer_use.target import (
     run_driver,
     windows_folders,
 )
+from reality_check.capabilities.install.download import Installing, build_in_place, fetch
 from reality_check.core.skill import DISTRIBUTION
 from reality_check.schemas import ComputerUseInstall, RealityCheckError
 
@@ -40,14 +33,19 @@ SHA256 = {
 }
 # A pre-release tag, so never `releases/latest`.
 RELEASE_URL = "https://github.com/trycua/cua/releases/download/cua-driver-rs-v{version}/{asset}"
-INSTALL_COMMAND = "reality-check install-computer-use"
+INSTALL_COMMAND = "reality-check install --component computer-use"
+INSTALLING = Installing("computer-use", INSTALL_COMMAND)
 # macOS grants Accessibility and Screen Recording to the app where it is, and the vendor's own installer puts it here.
 MACOS_APP = Path("/Applications/CuaDriver.app")
 MACOS_EXECUTABLE = Path("Contents/MacOS/cua-driver")
 VERSION_PATTERN = re.compile(r"^cua-driver (\d+\.\d+\.\d+)\b")
 VERSION_TIMEOUT_SECONDS = 15
-DOWNLOAD_TIMEOUT_SECONDS = 60
-CHUNK_BYTES = 1 << 20
+DESKTOPS = {
+    "windows": "this Windows desktop",
+    "wsl": "the Windows desktop",
+    "linux": "this Linux desktop",
+    "macos": "this Mac's desktop",
+}
 
 
 def install_computer_use() -> ComputerUseInstall:
@@ -72,6 +70,33 @@ def install_computer_use() -> ComputerUseInstall:
         already_installed=already,
         remaining_step=_remaining_step(target, found),
     )
+
+
+def on_this_machine() -> str:
+    """What installing computer use does here, from cheap local checks; never runs cua-driver or downloads."""
+    target = resolve_target()
+    if isinstance(target, Unavailable):
+        return " ".join(
+            part for part in ("Not supported here, so it is skipped.", target.reason, target.remedy) if part
+        )
+    match target.kind:
+        case "wsl":
+            # Finding the Windows user's folders starts cmd.exe, which is too slow for help.
+            where = f"the Windows build (`{target.asset(VERSION)}`) into the Windows user's LocalAppData"
+        case "macos":
+            where = f"`{MACOS_APP.name}` into `{MACOS_APP.parent}`"
+        case _:
+            where = f"the `{target.asset(VERSION)}` build into `{own_directory(target)}`"
+    lines = [f"Installs cua-driver {VERSION}, {where}; checks drive {DESKTOPS[target.kind]}."]
+    on_path = shutil.which(target.executable_name)
+    if on_path:
+        lines.append(f"`{on_path}` is on PATH and is used instead when it is cua-driver {VERSION}.")
+    if target.kind != "wsl" and own_executable(target).is_file():
+        lines.append(f"`{own_executable(target)}` is already there, so nothing is downloaded when it runs.")
+    remaining = _remaining_step(target, own_executable(target))
+    if remaining:
+        lines.append(remaining)
+    return " ".join(lines)
 
 
 def locate(target: Target) -> Path | None:
@@ -139,44 +164,16 @@ def _download(target: Target) -> Path:
             message=f"{directory} is there, but does not hold a working cua-driver {VERSION}.",
             remedy=f"Move {directory} aside, then run `{INSTALL_COMMAND}` again.",
         )
-    # Made here, so a failed install removes them again.
-    made = [folder for folder in (directory.parent, *directory.parent.parents) if not folder.exists()]
-    try:
-        directory.parent.mkdir(parents=True, exist_ok=True)
-        # Unpacked beside its final place, so moving it there is one rename and no one ever sees half of it.
-        staging = directory.parent / f".{directory.name}.{secrets.token_hex(3)}.tmp"
-        staging.mkdir()
-    except OSError as error:
-        raise RealityCheckError(
-            code="computer-use-install-failed",
-            message=f"Could not write to {directory.parent}: {error}",
-            remedy=f"Make {directory.parent} writable, then run `{INSTALL_COMMAND}` again.",
-        ) from error
-    try:
-        try:
-            archive = staging / target.asset(VERSION)
-            _fetch(target.asset(VERSION), archive)
-            unpacked = staging / "unpacked"
-            _extract(archive, unpacked)
-            found = _unpacked_root(target, unpacked)
-            try:
-                found.rename(directory)
-            except OSError:
-                # Another install finished first; its copy is the same pinned release.
-                if not directory.exists():
-                    raise
-        except OSError as error:
-            raise RealityCheckError(
-                code="computer-use-install-failed",
-                message=f"Could not unpack cua-driver {VERSION} into {directory}: {error}",
-                remedy=f"Run `{INSTALL_COMMAND}` again; if it fails the same way, check the free space and permissions "
-                f"of {directory.parent}.",
-            ) from error
-        finally:
-            shutil.rmtree(staging, ignore_errors=True)
-    except RealityCheckError:
-        _remove_empty(made)
-        raise
+
+    def build(staging: Path) -> Path:
+        asset = target.asset(VERSION)
+        archive = staging / asset
+        fetch(INSTALLING, RELEASE_URL.format(version=VERSION, asset=asset), archive, "sha256", SHA256[asset])
+        unpacked = staging / "unpacked"
+        _extract(archive, unpacked)
+        return _unpacked_root(target, unpacked)
+
+    build_in_place(INSTALLING, directory, build, f"cua-driver {VERSION}")
     executable = own_executable(target)
     if installed_version(target, executable) != VERSION:
         raise RealityCheckError(
@@ -185,45 +182,6 @@ def _download(target: Target) -> Path:
             remedy=f"Run `{executable} --version` to see why.",
         )
     return executable
-
-
-def _fetch(asset: str, path: Path) -> None:
-    url = RELEASE_URL.format(version=VERSION, asset=asset)
-    digest = hashlib.sha256()
-    try:
-        with (
-            urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS, context=_tls_context()) as response,
-            path.open("wb") as file,
-        ):
-            while chunk := response.read(CHUNK_BYTES):
-                digest.update(chunk)
-                file.write(chunk)
-    except (URLError, TimeoutError) as error:
-        raise RealityCheckError(
-            code="computer-use-download-failed",
-            message=f"Could not download {url}: {error}",
-            remedy=f"Check that this machine reaches github.com, then run `{INSTALL_COMMAND}` again.",
-        ) from error
-    if digest.hexdigest() != SHA256[asset]:
-        raise RealityCheckError(
-            code="computer-use-download-corrupt",
-            message=f"{url} does not match its pinned SHA-256: got {digest.hexdigest()}, expected {SHA256[asset]}.",
-            remedy=f"Run `{INSTALL_COMMAND}` again; if it fails the same way, do not use this download.",
-        )
-
-
-def _tls_context() -> ssl.SSLContext:
-    """Trust the system's store where it is the one to trust, else certifi's, which has no proxy's authority."""
-    # Windows' store, and a store named in SSL_CERT_FILE or SSL_CERT_DIR, hold a TLS-inspecting proxy's authority.
-    if sys.platform == "win32" or os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR"):
-        return ssl.create_default_context()
-    return ssl.create_default_context(cafile=certifi.where())
-
-
-def _remove_empty(folders: list[Path]) -> None:
-    for folder in folders:
-        with contextlib.suppress(OSError):
-            folder.rmdir()
 
 
 def _extract(archive: Path, into: Path) -> None:

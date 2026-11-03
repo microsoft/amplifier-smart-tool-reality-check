@@ -27,7 +27,7 @@ class ComputerUse(NamedTuple):
 
 
 class NotInstalled(NamedTuple):
-    """No cua-driver yet; the shim runs it from where `install-computer-use` will put it."""
+    """No cua-driver yet; the shim runs it from where `install` will put it."""
 
     target: Target
     executable: Path

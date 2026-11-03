@@ -8,7 +8,7 @@ from reality_check.capabilities.app import server as app_module
 from reality_check.capabilities.app.mcp_server import AppServer
 from reality_check.capabilities.check_software import activity, check, checks, intelligence_models, registry
 from reality_check.capabilities.check_software.check import CheckRun
-from reality_check.capabilities.computer_use import install
+from reality_check.capabilities.install import install as install_module
 from reality_check.core import manifest
 from reality_check.core import skill as skill_module
 from reality_check.intelligence.interface import Intelligence
@@ -18,6 +18,7 @@ from reality_check.schemas import (
     DEFAULT_TIMEOUT_SECONDS,
     AgentProvider,
     AskFirst,
+    BrowserInstall,
     CheckActivity,
     CheckDetail,
     CheckEvent,
@@ -25,8 +26,11 @@ from reality_check.schemas import (
     CheckResult,
     CheckSummary,
     CheckTimeoutError,
+    Component,
+    ComponentNotInstalled,
     ComputerUseInstall,
     EvidenceFile,
+    Install,
     IntelligenceModels,
     Manifest,
     ReasoningEffort,
@@ -34,6 +38,7 @@ from reality_check.schemas import (
 
 __all__ = [
     "AppServer",
+    "BrowserInstall",
     "CheckActivity",
     "CheckDetail",
     "CheckEvent",
@@ -41,8 +46,10 @@ __all__ = [
     "CheckRun",
     "CheckSummary",
     "CheckTimeoutError",
+    "ComponentNotInstalled",
     "ComputerUseInstall",
     "EvidenceFile",
+    "Install",
     "IntelligenceModels",
 ]
 
@@ -53,8 +60,12 @@ def load_manifest() -> Manifest:
 
 
 def skill(capability: str | None = None) -> str:
-    """The tool's skill, or the named capability's own skill, wrapped so a reader knows where the tool's files are."""
-    return skill_module.skill(capability)
+    """The tool's skill, or the named capability's own skill, wrapped so a reader knows where the tool's files are.
+
+    The install skill ends with what `install` does on this machine, from cheap local checks made on every call.
+    """
+    machine = install_module.on_this_machine() if capability == "install" else None
+    return skill_module.skill(capability, machine=machine)
 
 
 def version() -> str:
@@ -199,9 +210,15 @@ def list_intelligence_models() -> IntelligenceModels:
     return intelligence_models.list_intelligence_models()
 
 
-def install_computer_use() -> ComputerUseInstall:
-    """Install, once, the pinned cua-driver that checks drive desktop apps with; reports one already there."""
-    return install.install_computer_use()
+def install(components: list[Component] | None = None) -> Install:
+    """Install, once, what checks use beyond the agent: every component this machine supports, or the ones named.
+
+    Reports what is already there, and what is not installed with why and how to fix it, rather than raising.
+
+    Args:
+        components: Only these, from `COMPONENTS`; every one when None or empty.
+    """
+    return install_module.install(components=components)
 
 
 def reaching_software_skill() -> str:
