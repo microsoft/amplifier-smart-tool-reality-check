@@ -2,7 +2,7 @@
 
 The check installs computer use itself, goes on to drive GitHub Desktop through it, and finds the same defect as desktop-app-01: "Discard changes..." on one file discards a different file, while the confirmation dialog names the file the user chose.
 
-reality-check runs without computer use installed, with `--ask-first when-off`. The check's prompt says computer use is not installed yet and names the `install-computer-use` command, which asks nothing and changes nothing outside reality-check's own folder. A few seconds after the install succeeds, computer use is enabled through the `cua-driver` CLI the prompt names. Installing it is part of doing the check, not a question for the user. The check stops only if the install fails, and then says why.
+reality-check runs without computer use installed, with `--ask-first when-off`. The check's prompt says computer use is not installed yet and names the `install --component computer-use` command, which asks nothing and changes nothing outside reality-check's own folder. A few seconds after the install succeeds, computer use is enabled through the `cua-driver` CLI the prompt names. Installing it is part of doing the check, not a question for the user. The check stops only if the install fails, and then says why.
 
 GitHub Desktop is a desktop app, and the request is about what its UI does, so the check needs computer use. A check that stops and asks the user to run the install, or that reports from git or from reading code instead of the app, does not do what was asked.
 

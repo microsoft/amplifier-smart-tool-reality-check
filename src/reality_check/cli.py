@@ -355,6 +355,12 @@ def using_computer_use_skill() -> None:
 
 
 @app.command()
+def using_browser_skill() -> None:
+    """Print the skill for driving a web app's real UI in a headless browser through agent-browser. Deterministic."""
+    typer.echo(lib.using_browser_skill())
+
+
+@app.command()
 def gathering_evidence_skill() -> None:
     """Print the skill for what evidence to gather and where to put it. Deterministic."""
     typer.echo(lib.gathering_evidence_skill())

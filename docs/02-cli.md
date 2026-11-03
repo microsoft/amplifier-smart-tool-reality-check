@@ -143,6 +143,7 @@ reality-check install [--component computer-use|browser]...
 reality-check reaching-software-skill
 reality-check using-software-skill
 reality-check using-computer-use-skill
+reality-check using-browser-skill
 reality-check gathering-evidence-skill
 ```
 

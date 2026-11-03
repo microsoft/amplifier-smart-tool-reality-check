@@ -12,6 +12,7 @@ from fakes import Unavailable as UnstartableAgent
 import pytest
 
 from reality_check import lib
+from reality_check.capabilities.browser.target import Unavailable as BrowserUnavailable
 from reality_check.capabilities.check_software import check
 from reality_check.capabilities.computer_use import daemon, prepare
 from reality_check.capabilities.computer_use.prepare import ComputerUse, NotInstalled, prepare_computer_use
@@ -24,6 +25,8 @@ LINUX = Target("linux", "linux-x86_64-binary", "tar.gz")
 WINDOWS = Target("windows", "windows-x86_64-binary", "zip")
 MACOS = Target("macos", "darwin-universal", "tar.gz")
 EXECUTABLE = Path("/mnt/c/cua/cua-driver.exe")
+# What the prompt says next, as every check in tests has no browser.
+NO_BROWSER = check._browser_text(BrowserUnavailable("agent-browser has no build for the riscv64 architecture.", None))
 HEALTHY = [
     {"name": "ax_capability", "status": "pass"},
     {"name": "tcc_accessibility", "status": "skip"},
@@ -363,7 +366,7 @@ async def test_the_prompt_says_computer_use_is_enabled_and_the_check_lets_go_of_
 
     prompt = fake.runs[0].request.initial_message
     enabled = "Computer use is enabled through the CLI `cua-driver`; see the using-computer-use skill."
-    assert f"{enabled}\n{check.ASK_FIRST[ask_first]}" in prompt
+    assert f"{enabled}\n{NO_BROWSER}\n{check.ASK_FIRST[ask_first]}" in prompt
     assert "using-computer-use" in prompt
     assert fake.runs[0].request.path_directories[0] == Path("/cache/abc")
     assert readied.prepared == readied.released == [run.check_id]
@@ -398,7 +401,7 @@ async def test_the_prompt_says_why_computer_use_is_off_and_how_to_enable_it(
         "Computer use is not enabled: cua-driver 0.36.0 is not installed. To enable it: Run `reality-check "
         "install --component computer-use`. This matters only for software that needs its desktop UI driven."
     )
-    assert f"{off}\n{check.ASK_FIRST[ask_first]}" in fake.runs[0].request.initial_message
+    assert f"{off}\n{NO_BROWSER}\n{check.ASK_FIRST[ask_first]}" in fake.runs[0].request.initial_message
 
 
 async def test_the_prompt_says_when_computer_use_cannot_be_enabled_here(
@@ -426,7 +429,7 @@ async def test_a_resumed_check_decides_computer_use_again(monkeypatch: pytest.Mo
     await second.result()
 
     enabled = "Computer use is enabled through the CLI `cua-driver`; see the using-computer-use skill."
-    assert f"{enabled}\n{check.ASK_FIRST['when-off']}" in fake.runs[0].request.initial_message
+    assert f"{enabled}\n{NO_BROWSER}\n{check.ASK_FIRST['when-off']}" in fake.runs[0].request.initial_message
     assert fake.runs[0].request.path_directories[0] == Path("/cache/abc")
     assert readied.released == [second.check_id]
 
@@ -492,10 +495,10 @@ async def test_without_an_install_the_agent_is_told_to_install_and_the_check_ena
 
     prompt = fake.runs[0].request.initial_message
     assert "Computer use is not installed yet." in prompt
-    assert f"install it with `{check._install_command()}`" in prompt
+    assert f"install it with `{check._install_command('computer-use')}`" in prompt
     assert "enabled through the CLI `cua-driver` (`cua-driver status` says when it runs)" in prompt
     assert fake.runs[0].request.path_directories[0] == Path("/cache/abc")
-    assert check._install_command().endswith("install --component computer-use")
+    assert check._install_command("computer-use").endswith("install --component computer-use")
     assert len(readied.prepared) == 2
     assert readied.released == [run.check_id]
 

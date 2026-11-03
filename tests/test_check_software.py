@@ -114,6 +114,7 @@ async def test_a_check_streams_its_events_and_ends_with_the_agent_s_report(works
         "reaching-software",
         "using-software",
         "using-computer-use",
+        "using-browser",
         "gathering-evidence",
         "digital-twin-universe",
     }

@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from reality_check.capabilities.browser.target import Unavailable as BrowserUnavailable
 from reality_check.capabilities.check_software import check, registry
 from reality_check.capabilities.computer_use.target import Unavailable
 
@@ -14,6 +15,16 @@ def computer_use_off(check_id: str, cache_directory: Path) -> Unavailable:
 def no_computer_use(monkeypatch: pytest.MonkeyPatch) -> None:
     """Checks in tests never touch the machine's own cua-driver."""
     monkeypatch.setattr(check, "prepare_computer_use", computer_use_off)
+
+
+def browser_unsupported(check_id: str, cache_directory: Path) -> BrowserUnavailable:
+    return BrowserUnavailable("agent-browser has no build for the riscv64 architecture.", None)
+
+
+@pytest.fixture(autouse=True)
+def no_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks in tests never touch the machine's own agent-browser."""
+    monkeypatch.setattr(check, "prepare_browser", browser_unsupported)
 
 
 @pytest.fixture(autouse=True)

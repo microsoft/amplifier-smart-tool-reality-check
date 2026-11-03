@@ -15,7 +15,7 @@ TASK = Path(__file__).resolve().parent
 DESCRIPTION = (
     "desktop-app-01's GitHub Desktop and request, with the same discard bug, but reality-check is installed without "
     "computer use and runs with --ask-first when-off. The check's prompt says computer use is not installed yet and "
-    "names `reality-check install-computer-use`, which asks nothing. The right result is a check that runs the "
+    "names `reality-check install --component computer-use`, which asks nothing. The right result is a check that runs the "
     "install itself, goes on to drive the app's UI through computer use, and finds the defect, without stopping to "
     "ask the user to install it and without losing the user's uncommitted changes."
 )
@@ -30,7 +30,7 @@ TIMEOUT_SECONDS = 3600
 RUBRIC = {
     "installed-and-went-on": Criterion(
         weight=4,
-        description="Ran `reality-check install-computer-use` itself and went on to drive the app through computer "
+        description="Ran `reality-check install --component computer-use` itself and went on to drive the app through computer "
         "use, which the capability's events show as `cua-driver call` commands, without stopping or asking the user "
         "to install it.",
     ),
@@ -64,7 +64,8 @@ NOTES_APP = "~/projects/notes-app"
 # Files cua-driver writes when it sends telemetry or records an installation.
 TELEMETRY_FILES = r"\( -name '.telemetry*' -o -name .installation_recorded \)"
 CUA_DRIVER_CALL = re.compile(r"cua-driver\S*\s+call\b")
-INSTALL_COMPUTER_USE = re.compile(r"reality-check\S*\s+install-computer-use\b")
+# `install` alone installs computer use too; `install --component <other>` does not.
+INSTALL_COMPUTER_USE = re.compile(r"reality-check\S*\s+install(?![\w-])(?!\s+--component\s+(?!computer-use\b))")
 INSTALLED_DRIVER = f"~/.local/share/reality-check/cua-driver/{CUA_DRIVER_VERSION}/cua-driver"
 
 
@@ -123,7 +124,7 @@ def _after_the_check(env: Environment, context: RunContext, result: CapabilityRe
             context.record.task_outcome["cua_driver_calls"]
         ),
         f"Whether {INSTALLED_DRIVER} exists after the check": str(context.record.task_outcome["cua_driver_installed"]),
-        "Whether the capability's commands ran `install-computer-use`": str(
+        "Whether the capability's commands ran `install --component computer-use`": str(
             context.record.task_outcome["ran_install_computer_use"]
         ),
         "notes-app's `git status --short` and last 3 commits right after the check": json.dumps(notes_app),

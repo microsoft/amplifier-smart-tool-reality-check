@@ -95,6 +95,12 @@ CAPABILITIES = (
         skill="skills/using-computer-use/SKILL.md",
     ),
     Capability(
+        "using-browser-skill",
+        "Print the skill for driving a web app's real UI in a headless browser through agent-browser: pages, input, screenshots.",
+        model_backed=False,
+        skill="skills/using-browser/SKILL.md",
+    ),
+    Capability(
         "gathering-evidence-skill",
         "Print the skill for what evidence to gather for each kind of software, and where to put it.",
         model_backed=False,

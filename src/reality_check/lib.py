@@ -236,6 +236,11 @@ def using_computer_use_skill() -> str:
     return skill_module.skill("using-computer-use-skill")
 
 
+def using_browser_skill() -> str:
+    """The skill for driving a web app's real UI in a headless browser through agent-browser: pages, input, screenshots."""
+    return skill_module.skill("using-browser-skill")
+
+
 def gathering_evidence_skill() -> str:
     """The skill for what evidence to gather for each kind of software, and where to put it."""
     return skill_module.skill("gathering-evidence-skill")

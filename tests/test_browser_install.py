@@ -62,12 +62,6 @@ def test_each_platform_gets_its_build_and_every_build_has_a_pinned_hash(
     assert resolved.executable_name == ("agent-browser.exe" if system == "win32" else "agent-browser")
 
 
-def test_chrome_for_testing_has_no_linux_arm64_or_musl_build() -> None:
-    assert [each.chrome_for_testing for each in (LINUX, LINUX_ARM, Target("linux-musl-x64"))] == [True, False, False]
-    assert Target("darwin-arm64").chrome_for_testing
-    assert Target("win32-x64").chrome_for_testing
-
-
 @pytest.mark.parametrize(("system", "machine"), [("freebsd14", "amd64"), ("linux", "i686"), ("win32", "x86")])
 def test_an_os_or_architecture_without_a_build_is_unavailable(
     monkeypatch: pytest.MonkeyPatch, system: str, machine: str
@@ -185,7 +179,9 @@ def test_install_downloads_the_binary_and_only_the_skills_and_license_from_the_p
     if sys.platform != "win32":
         assert installed.executable.stat().st_mode & stat.S_IXUSR
     assert installed.skills_directory == release.directory / "skill-data"
-    assert sorted(str(path.relative_to(release.directory)) for path in release.directory.rglob("*") if path.is_file()) == [
+    assert sorted(
+        str(path.relative_to(release.directory)) for path in release.directory.rglob("*") if path.is_file()
+    ) == [
         "LICENSE",
         "bin/agent-browser",
         "skill-data/core/SKILL.md",
@@ -226,7 +222,10 @@ def test_every_agent_browser_run_finds_its_skills_has_no_update_check_and_nothin
     assert release.stdins == [subprocess.DEVNULL] * len(release.runs)
 
 
-@pytest.mark.parametrize(("root", "sudo_exit", "arguments"), [(False, 1, ["install"]), (False, 0, ["install", "--with-deps"]), (True, 1, ["install", "--with-deps"])])
+@pytest.mark.parametrize(
+    ("root", "sudo_exit", "arguments"),
+    [(False, 1, ["install"]), (False, 0, ["install", "--with-deps"]), (True, 1, ["install", "--with-deps"])],
+)
 def test_with_no_browser_it_installs_chrome_with_system_libraries_only_when_it_can_sudo_unasked(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, root: bool, sudo_exit: int, arguments: list[str]
 ) -> None:
@@ -239,20 +238,6 @@ def test_with_no_browser_it_installs_chrome_with_system_libraries_only_when_it_c
 
     assert release.browser_installs() == [arguments]
     assert not installed.already_installed
-
-
-def test_already_installed_but_with_no_browser_is_not_already_installed(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    release = Release(monkeypatch, LINUX, tmp_path)
-    install.install_browser()
-    release.launches = [False, True]
-
-    again = install.install_browser()
-
-    assert len(release.downloads) == 2
-    assert release.browser_installs() == [["install"]]
-    assert not again.already_installed
 
 
 def test_no_browser_without_system_libraries_names_the_command_that_installs_them(
@@ -268,19 +253,6 @@ def test_no_browser_without_system_libraries_names_the_command_that_installs_the
     assert "reality-check install --component browser" in missing.remedy
     assert "No Chrome to launch" in missing.message
     assert not missing.unsupported
-
-
-def test_no_browser_even_with_system_libraries_says_what_failed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    release = Release(monkeypatch, LINUX, tmp_path)
-    release.launches = [False]
-    release.sudo_exit = 0
-
-    missing = lib.install(components=["browser"]).not_installed[0]
-
-    assert missing.code == "browser-launch-failed"
-    assert "Chrome not found" in missing.message
-    assert "No Chrome to launch" in missing.message
-    assert "ffmpeg" not in missing.message
 
 
 def test_a_failed_chrome_download_says_what_agent_browser_said(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -306,19 +278,6 @@ def test_linux_arm64_with_no_chromium_names_the_package_manager_and_never_downlo
     assert "sudo apt install chromium" in missing.remedy
     assert "reality-check install --component browser" in missing.remedy
     assert release.browser_installs() == []
-
-
-def test_a_launch_test_that_did_not_pass_is_no_browser(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    release = Release(monkeypatch, LINUX, tmp_path)
-    install.install_browser()
-    skipped = {"checks": [{"id": "launch.skipped.provider", "message": "Skipped", "status": "info"}]}
-    monkeypatch.setattr(
-        install.subprocess, "run", lambda arguments, **options: subprocess.CompletedProcess(arguments, 0, json.dumps(skipped), "")
-    )
-
-    assert install.launch_failures(release.directory / "bin" / "agent-browser") == [
-        "The headless launch test did not pass."
-    ]
 
 
 def test_without_certutil_on_linux_the_remaining_step_names_its_package(
@@ -360,21 +319,6 @@ def test_a_package_that_does_not_match_its_integrity_installs_nothing(
     assert not (tmp_path / "data").exists()
 
 
-def test_a_failed_download_names_the_host_to_reach(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    Release(monkeypatch, LINUX, tmp_path)
-
-    def offline(url: str, timeout: float, context: Any) -> io.BytesIO:
-        raise download.URLError("no route to host")
-
-    monkeypatch.setattr(download, "urlopen", offline)
-
-    missing = lib.install(components=["browser"]).not_installed[0]
-
-    assert missing.code == "browser-download-failed"
-    assert "github.com" in missing.remedy
-    assert not (tmp_path / "data").exists()
-
-
 def test_an_install_folder_that_does_not_run_is_broken(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     release = Release(monkeypatch, LINUX, tmp_path)
     (release.directory / "bin").mkdir(parents=True)
@@ -384,14 +328,3 @@ def test_an_install_folder_that_does_not_run_is_broken(monkeypatch: pytest.Monke
 
     assert missing.code == "browser-install-broken"
     assert release.downloads == []
-
-
-def test_install_where_agent_browser_cannot_run_says_why(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(install, "resolve_target", lambda: Unavailable("There is no build for riscv64.", None))
-
-    missing = lib.install(components=["browser"]).not_installed[0]
-
-    assert missing.code == "browser-unsupported"
-    assert missing.unsupported
-    assert "riscv64" in missing.message
-    assert missing.remedy

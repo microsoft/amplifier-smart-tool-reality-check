@@ -71,7 +71,7 @@ reality-check read-check --check-id CHECK_ID
 # Other
 reality-check app   # or mcp, to serve it to an MCP client
 reality-check list-intelligence-models
-reality-check reaching-software-skill # or using-software-skill, using-computer-use-skill, gathering-evidence-skill
+reality-check reaching-software-skill # or using-software-skill, using-computer-use-skill, using-browser-skill, gathering-evidence-skill
 reality-check install
 ```
 

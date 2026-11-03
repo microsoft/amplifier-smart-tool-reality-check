@@ -82,7 +82,9 @@ def on_this_machine() -> str:
     """What installing the browser does here, from cheap local checks; never runs agent-browser or downloads."""
     target = resolve_target()
     if isinstance(target, Unavailable):
-        return " ".join(part for part in ("Not supported here, so it is skipped.", target.reason, target.remedy) if part)
+        return " ".join(
+            part for part in ("Not supported here, so it is skipped.", target.reason, target.remedy) if part
+        )
     executable = own_executable(target)
     if executable.is_file():
         lines = [f"agent-browser {VERSION} is already at `{executable}`, so nothing is downloaded when it runs."]
@@ -127,10 +129,15 @@ def skills_directory() -> Path:
     return own_directory() / SKILLS
 
 
-def environment() -> dict[str, str]:
-    """This process's environment for agent-browser: its skills found where reality-check put them, no update check."""
+def variables() -> dict[str, str]:
+    """What every agent-browser process gets: its skills found where reality-check put them, no update check."""
     # agent-browser finds the skills only through this variable, not beside its binary.
-    return {**os.environ, "AGENT_BROWSER_SKILLS_DIR": str(skills_directory()), "AGENT_BROWSER_NO_VERSION_CHECK": "1"}
+    return {"AGENT_BROWSER_SKILLS_DIR": str(skills_directory()), "AGENT_BROWSER_NO_VERSION_CHECK": "1"}
+
+
+def environment() -> dict[str, str]:
+    """This process's environment for agent-browser, with `variables()`."""
+    return {**os.environ, **variables()}
 
 
 def run_agent_browser(executable: Path, arguments: list[str], timeout: float) -> subprocess.CompletedProcess[str]:

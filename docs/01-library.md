@@ -225,10 +225,11 @@ With no components named, it installs every one in `COMPONENTS` this machine sup
 
 The check runs the way a sub-agent does: the agent provider's harness as it ships, with its built-in tools, and a short prompt made from a template. Reality Check adds only:
 
-- The prompt. The template fills in the request, the target, the paths of the files the request names, the check's `evidence/` directory, the previous checks' directories, whether computer use is enabled, `ask_first`, and `keep_running`. It says what the report, the agent's final message, must cover, not how to do the work.
+- The prompt. The template fills in the request, the target, the paths of the files the request names, the check's `evidence/` directory, the previous checks' directories, whether computer use and the browser are enabled, `ask_first`, and `keep_running`. It says what the report, the agent's final message, must cover, not how to do the work.
 - Skills: the ones in [Skills for checking software](#skills-for-checking-software), passed as skill directories, so the agent loads one only when the task needs it.
 - Digital Twin Universe: its CLI, by the path in this environment, and its skill. The agent uses it to launch a universe, to work in one the caller named, and to destroy what it launched, unless `keep_running` is set.
 - Computer use: when `install` has run and the desktop allows it, the check starts the cua-driver daemon and gives the agent a command that runs cua-driver and the using-computer-use skill. When cua-driver is not installed, the prompt gives the agent `install --component computer-use` and the command it will run through, and the check makes computer use ready as soon as the install is there. When it cannot be used for any other reason, the prompt says why and what enables it, and `ask_first` decides whether the agent stops. A daemon the check started is stopped when the last check using it ends; one the user started is left running.
+- Browser: the agent gets a command that runs agent-browser with its skills and, on Linux when `certutil` is there, this machine's certificate authorities, the using-browser skill, and a session named for the check. When agent-browser is not installed, the prompt gives the agent `install --component browser` instead, and the same command works once the install is there. When it cannot run here, the prompt says why. The check closes its sessions when it ends.
 
 Everything else, such as a browser on another machine or a tester the caller installed, the agent finds and uses on its own. When the agent needs more from Reality Check, it is added here, and not built in ahead of need.
 
@@ -243,6 +244,7 @@ The agent in `check_software` gets the same skills, and a caller's agent can rea
 def reaching_software_skill() -> str    # reaching software where it runs: LAN URLs instead of localhost, SSH and Tailscale, universes on another machine
 def using_software_skill() -> str       # seeing and using software as a user: a browser that is already open, computer use, a terminal, testers for native apps
 def using_computer_use_skill() -> str   # driving a desktop app's real UI through cua-driver: screenshots, the accessibility tree, input
+def using_browser_skill() -> str        # driving a web app's real UI in a headless browser through agent-browser: pages, input, screenshots
 def gathering_evidence_skill() -> str   # what evidence to gather for each kind of software, and where to put it
 ```
 

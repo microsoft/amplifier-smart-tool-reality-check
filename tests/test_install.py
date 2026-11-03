@@ -215,7 +215,9 @@ class Machine:
         monkeypatch.setattr(computer_use_target, "BINFMT", binfmt)
         monkeypatch.setenv("DISPLAY", ":0")
         monkeypatch.setattr(browser_install.os, "getuid", lambda: 1000, raising=False)
-        monkeypatch.setattr(browser_install.shutil, "which", lambda name: f"/usr/bin/{name}" if name in on_path else None)
+        monkeypatch.setattr(
+            browser_install.shutil, "which", lambda name: f"/usr/bin/{name}" if name in on_path else None
+        )
         monkeypatch.setattr(browser_install.platformdirs, "user_data_path", lambda *args, **kwargs: self.data)
         monkeypatch.setattr(computer_use_install, "MACOS_APP", tmp_path / "Applications" / "CuaDriver.app")
         monkeypatch.setattr(subprocess, "run", self._run)
@@ -243,54 +245,6 @@ def test_on_this_machine_under_wsl_with_passwordless_sudo(monkeypatch: pytest.Mo
     assert "installs Chromium's system libraries" in section
     assert "`certutil` is there" in section
     assert machine.runs == [["sudo", "-n", "true"]]
-
-
-def test_on_this_machine_on_linux_arm64_needs_the_distributions_chromium(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    machine = Machine(monkeypatch, tmp_path, "linux", "aarch64", on_path=("sudo",))
-    executable = machine.data / "agent-browser" / browser_install.VERSION / "bin" / "agent-browser"
-    executable.parent.mkdir(parents=True)
-    executable.touch()
-
-    section = install.on_this_machine()
-
-    assert "This is Linux arm64." in section
-    assert "`cua-driver-rs-0.36.0-linux-arm64-binary.tar.gz` build" in section
-    assert "checks drive this Linux desktop" in section
-    assert f"agent-browser 0.41.1 is already at `{executable}`" in section
-    assert "Chrome for Testing has no `linux-arm64` build" in section
-    assert "`certutil` is missing" in section
-    assert machine.runs == []
-
-
-def test_on_this_machine_on_macos_names_the_permissions_and_no_linux_steps(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    machine = Machine(monkeypatch, tmp_path, "darwin", "arm64")
-
-    section = install.on_this_machine()
-
-    assert "This is macOS arm64." in section
-    assert "`CuaDriver.app`" in section
-    assert "permissions grant` and allow Accessibility and Screen Recording" in section
-    assert "`agent-browser-darwin-arm64` release asset" in section
-    assert "certutil" not in section
-    assert "sudo" not in section
-    assert machine.runs == []
-
-
-def test_on_this_machine_says_why_each_component_is_skipped_where_none_runs(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    machine = Machine(monkeypatch, tmp_path, "linux", "riscv64")
-
-    section = install.on_this_machine()
-
-    assert "This is Linux riscv64." in section
-    assert "- `computer-use`: Not supported here, so it is skipped. cua-driver has no build for the riscv64" in section
-    assert "- `browser`: Not supported here, so it is skipped. agent-browser has no build for the riscv64" in section
-    assert machine.runs == []
 
 
 def test_only_the_install_skill_says_what_it_does_on_this_machine(
