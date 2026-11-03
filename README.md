@@ -93,10 +93,10 @@ To install manually:
 
 ```bash
 # Install the Agent Skill so your agent knows about it.
-npx skills add microsoft/amplifier-smart-tool-reality-check
+npx skills add microsoft/amplifier-smart-tool-reality-check#v0.7.1
 # If that fails, copy this repository's skills/reality-check folder into your agent's skills folder.
 # Choose the provider(s) you want: [all], [copilot], [amplifier-agent], [codex], or [claude]
-uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
+uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
 # Once, to give checks everything they can use
 reality-check install
 # (Optional) Register `reality-check mcp` as a stdio MCP server in your client to see checks in the chat.
@@ -105,7 +105,14 @@ reality-check install
 To use it as a library:
 
 ```bash
-uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
+uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
+```
+
+To uninstall:
+
+```bash
+npx skills remove reality-check   # add -g for global installs
+uv tool uninstall reality-check
 ```
 
 ### Computer use
@@ -115,20 +122,6 @@ Checks drive desktop apps through [cua-driver](https://github.com/trycua/cua/tre
 ### Browser
 
 Checks drive web apps' UIs headlessly through [agent-browser](https://github.com/vercel-labs/agent-browser). `reality-check install` installs a pinned, hash-checked release and its skills once, into reality-check's own folder, with its update check off, and makes sure a headless browser launches: when none does, it downloads Chrome for Testing, and on Linux the system libraries Chromium needs, through sudo when that needs no password. Linux on arm64 and Alpine need the distribution's Chromium.
-
-To update:
-
-```bash
-npx skills update reality-check   # add -g for global installs
-uv tool upgrade reality-check
-```
-
-To uninstall:
-
-```bash
-npx skills remove reality-check   # add -g for global installs
-uv tool uninstall reality-check
-```
 
 ## Contributing
 

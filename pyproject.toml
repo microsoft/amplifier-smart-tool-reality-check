@@ -1,21 +1,21 @@
 [project]
 name = "reality-check"
-version = "0.7.0"
+version = "0.7.1"
 description = "Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do"
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
 dependencies = [
-    "certifi>=2026.10.19,<2027.0.0",
-    "digital-twin-universe @ git+https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe@cb80c49a4fced2939fa59863db05c62e9a42688a",
+    "certifi>=2026.10.23,<2027.0.0",
+    "digital-twin-universe @ git+https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe@v0.6.9",
     "fastapi>=0.141.1,<0.142.0",
-    "filelock>=4.0.9,<5.0.0",
+    "filelock>=4.2.4,<5.0.0",
     "jsonschema>=4.26.0,<5.0.0",
     "mcp>=2.3.0,<3.0.0",
-    "platformdirs>=4.13.0,<5.0.0",
+    "platformdirs>=4.13.6,<5.0.0",
     "psutil>=7.2.2,<8.0.0",
-    "pydantic>=2.13,<3.0",
+    "pydantic>=2.14,<3.0",
     "pyyaml>=6.0.3,<7.0.0",
-    "typer>=0.27.2,<0.28.0",
+    "typer>=0.27.3,<0.28.0",
     "uvicorn>=0.53.0,<0.54.0",
 ]
 
@@ -27,23 +27,23 @@ reality-check = "reality_check.cli:main"
 
 [project.optional-dependencies]
 copilot = [
-    "github-copilot-sdk>=1.0.21,<2.0.0",
+    "github-copilot-sdk>=1.0.27,<2.0.0",
 ]
 amplifier-agent = [
     "amplifier-agent @ git+https://github.com/microsoft/amplifier-agent@v0.25.0#subdirectory=packages/python",
 ]
 codex = [
-    "openai-codex>=0.162.1,<1.0.0",
+    "openai-codex>=0.163.0,<1.0.0",
 ]
 claude = [
-    "claude-agent-sdk>=0.2.167,<0.3.0",
+    "claude-agent-sdk>=0.2.174,<0.3.0",
 ]
 all = [
     "reality-check[copilot,amplifier-agent,codex,claude]",
 ]
 
 [build-system]
-requires = ["uv_build>=0.12.5,<0.13.0"]
+requires = ["uv_build>=0.13.6,<0.14.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
@@ -52,9 +52,7 @@ module-name = "reality_check"
 [tool.uv]
 add-bounds = "major"
 default-groups = "all"
-exclude-newer = "5 days"
-# Remove once the certifi release that exclude-newer allows has no known CVE.
-exclude-newer-package = { certifi = false }
+exclude-newer = "7 days"
 
 [dependency-groups]
 # Every agent provider, so `uv run` type checks and tests each implementation without asking for extras.
@@ -62,8 +60,8 @@ dev = [
     "reality-check[all]",
     "pytest>=9.1",
     "pytest-asyncio>=1.4",
-    "ruff>=0.16",
-    "ty>=0.0.79",
+    "ruff>=0.17",
+    "ty>=0.0.92",
 ]
 
 [tool.ruff]

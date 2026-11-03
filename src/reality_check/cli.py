@@ -1,7 +1,7 @@
 """Command line entry point for Reality Check."""
 
 import asyncio
-from collections.abc import Callable, Coroutine, Iterator
+from collections.abc import Callable, Coroutine, Generator
 import contextlib
 import io
 import json
@@ -396,7 +396,7 @@ def _print_event(event: CheckEvent) -> None:
 
 
 @contextlib.contextmanager
-def _cancelled_by_signals(run: lib.CheckRun) -> Iterator[None]:
+def _cancelled_by_signals(run: lib.CheckRun) -> Generator[None]:
     """Cancel the check on every signal that ends the process, so its session is drained and can be resumed."""
     loop = asyncio.get_running_loop()
     cancelling: set[asyncio.Task[None]] = set()

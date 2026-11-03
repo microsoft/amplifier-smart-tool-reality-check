@@ -1,13 +1,16 @@
 """Picks the agent provider and the model with the installed SDKs faked, so it runs on a bare install."""
 
 from importlib.machinery import ModuleSpec
+from importlib.metadata import version
 
 import pytest
 
 from reality_check.intelligence import interface
 from reality_check.intelligence.interface import AgentRun, resolve_agent_provider, select_intelligence
 from reality_check.intelligence.schemas import AgentRequest, Steering
-from reality_check.schemas import AGENT_PROVIDERS, DEFAULT_INTELLIGENCE_MODELS, AgentProvider
+from reality_check.schemas import AGENT_PROVIDERS, DEFAULT_INTELLIGENCE_MODELS, AgentProvider, RealityCheckError
+
+REPOSITORY = f"git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v{version('reality-check')}"
 
 
 class FakeIntelligence:
@@ -43,6 +46,28 @@ def test_a_named_agent_provider_wins_over_the_order(monkeypatch: pytest.MonkeyPa
     only_installed(monkeypatch, *AGENT_PROVIDERS)
 
     assert resolve_agent_provider(named) == named
+
+
+@pytest.mark.parametrize(
+    ("named", "code", "extra"),
+    [
+        (None, "no-agent-provider", "all"),
+        ("copilot", "agent-provider-not-installed", "copilot"),
+        ("amplifier-agent", "agent-provider-not-installed", "amplifier-agent"),
+        ("codex", "agent-provider-not-installed", "codex"),
+        ("claude", "agent-provider-not-installed", "claude"),
+    ],
+)
+def test_a_missing_agent_provider_names_the_install_command(
+    monkeypatch: pytest.MonkeyPatch, named: AgentProvider | None, code: str, extra: str
+) -> None:
+    only_installed(monkeypatch)
+
+    with pytest.raises(RealityCheckError) as failure:
+        resolve_agent_provider(named)
+
+    assert failure.value.code == code
+    assert f'uv tool install "reality-check[{extra}] @ {REPOSITORY}"' in failure.value.remedy
 
 
 def test_an_injected_intelligence_wins_and_needs_no_agent_provider_installed(monkeypatch: pytest.MonkeyPatch) -> None:

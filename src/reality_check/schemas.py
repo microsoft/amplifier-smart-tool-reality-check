@@ -11,7 +11,7 @@ AGENT_PROVIDERS: tuple[AgentProvider, ...] = ("copilot", "amplifier-agent", "cod
 
 DEFAULT_INTELLIGENCE_MODELS: dict[AgentProvider, str] = {
     "copilot": "gpt-6.1-sol",
-    "amplifier-agent": "openai/gpt-6-astra",
+    "amplifier-agent": "openai/gpt-6.1-sol",
     "codex": "gpt-6.1-sol",
     "claude": "claude-opus-5-5",
 }
