@@ -69,7 +69,7 @@ INSTALLED_DRIVER = f"~/.local/share/reality-check/cua-driver/{CUA_DRIVER_VERSION
 
 
 def run(context: RunContext) -> None:
-    with environment.launch(context, TASK / "environment") as env:
+    with environment.launch(context, TASK / "environment", environment.GITHUB_DESKTOP_SEEDED) as env:
         with context.step("setup"):
             install.setup(env, context)
         with context.step("baseline"):

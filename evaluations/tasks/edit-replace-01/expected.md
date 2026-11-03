@@ -7,7 +7,7 @@ Replace All has two defects. Find, single Replace, and the rest of the editor wo
 
 Reproduction, in `assets/highlighting-tests/wide-chars.txt`, whose last three lines are a task list with `todo` after wide characters:
 
-1. Build with `cargo build` and run `target/debug/edit assets/highlighting-tests/wide-chars.txt`, with `libicu-dev` installed.
+1. Build with `cargo build` and run `target/debug/edit assets/highlighting-tests/wide-chars.txt`. The machine has Rust and `libicu-dev`.
 2. Ctrl+R, type `todo`, Tab, type `DONE`, then Replace All: Ctrl+Alt+Enter in the Replace field, or the `[Replace All]` button (four Tabs then Enter from the Replace field). Escape closes the search bar.
 3. All three lines read `DONE`. The status bar shows `15:14` and the cursor is after the `:` of `- [x] ✅ DONE: write the docs`, instead of `15:13`, right after `DONE`. Typing `X` there gives `DONE:X`.
 4. Right after Replace All, one Ctrl+Z turns only line 15 back to `todo`; lines 13 and 14 keep `DONE`.

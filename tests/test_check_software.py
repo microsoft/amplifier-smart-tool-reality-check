@@ -1,8 +1,10 @@
 """Drives check_software with a scripted intelligence, so no agent provider or network is needed."""
 
+from collections.abc import Callable
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -128,6 +130,55 @@ async def test_checks_share_one_cached_digital_twin_universe_skill(tmp_path: Pat
         await run.result()
 
     assert [path.name for path in skills_cache.rglob("*") if path.is_file()] == ["SKILL.md"]
+
+
+@pytest.fixture
+def uv_at(monkeypatch: pytest.MonkeyPatch) -> Callable[[Path | None], None]:
+    """Make `uv` resolve to the given path, or to nothing, leaving every other command as it is."""
+    which = shutil.which
+
+    def place(uv: Path | None) -> None:
+        def found(name: str, *args: Any, **kwargs: Any) -> str | None:
+            if name == "uv":
+                return None if uv is None else str(uv)
+            return which(name, *args, **kwargs)
+
+        monkeypatch.setattr(shutil, "which", found)
+
+    return place
+
+
+async def test_uv_s_folder_goes_first_on_the_agent_s_path_only_when_this_path_lacks_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uv_at: Callable[[Path | None], None]
+) -> None:
+    uv = tmp_path / "tools" / "uv"
+    uv_at(uv)
+    requests: list[AgentRequest] = []
+    for path in [tmp_path / "bin", os.pathsep.join([str(tmp_path / "bin"), str(uv.parent)])]:
+        monkeypatch.setenv("PATH", str(path))
+        fake = FakeIntelligence(finishes())
+        await (await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=fake)).result()
+        requests.append(fake.runs[0].request)
+
+    assert [request.path_directories for request in requests] == [[uv.parent], []]
+
+
+async def test_the_prompt_says_uv_is_missing_only_when_it_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uv_at: Callable[[Path | None], None]
+) -> None:
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    (templates / "prompt.md").write_text("[$uv_missing]", encoding="utf-8")
+    shutil.copy(check.HERE / "report-format.md", templates)
+    monkeypatch.setattr(check, "HERE", templates)
+    prompts: list[str] = []
+    for uv in [None, tmp_path / "tools" / "uv"]:
+        uv_at(uv)
+        fake = FakeIntelligence(finishes())
+        await (await lib.check_software(REQUEST, checks_directory=tmp_path / "checks", intelligence=fake)).result()
+        prompts.append(fake.runs[0].request.initial_message)
+
+    assert prompts == [f"[{check.UV_MISSING}]", "[]"]
 
 
 async def test_the_agent_s_final_message_is_the_report_and_is_kept_in_report_md(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ import asyncio
 import base64
 from collections.abc import AsyncIterator, Callable, Coroutine
 from decimal import Decimal
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -262,8 +263,21 @@ async def test_the_agent_gets_the_split_model_workspace_sessions_and_skills_and_
     assert options.skills == [str(tmp_path / "skills"), str(tmp_path / "more")]
     assert options.approvals == "allow"
     assert options.tools is None
+    assert options.environment is None
     assert texts(fake.inputs[0]) == ["Do the work."]
     assert fake.calls[-2:] == ["session.close", "agent.close"]
+
+
+async def test_path_directories_go_first_on_the_path_of_the_agent_s_tools(
+    world: Callable[..., FakeWorld], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = world(answers("done"))
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    await (await AmplifierAgentIntelligence().start(request(tmp_path, path_directories=[tmp_path / "shim"]))).result()
+
+    [options] = fake.options
+    assert options.environment == {"PATH": f"{tmp_path / 'shim'}{os.pathsep}/usr/bin"}
 
 
 async def test_without_effort_workspace_or_session_directory_the_state_directory_is_used(

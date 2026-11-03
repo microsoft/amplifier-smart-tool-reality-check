@@ -35,6 +35,7 @@ from reality_check.capabilities.check_software.constants import (
     NO_ACCESSIBILITY_TREE,
     PREVIOUS_CHECKS,
     TARGET_FROM_REQUEST,
+    UV_MISSING,
     WRAP_UP,
 )
 from reality_check.capabilities.check_software.intelligence_models import require_allowed
@@ -695,12 +696,13 @@ async def _start(
     write_record(directory, record)
     # Decided again on every start, so a check resumed after its caller enabled computer use gets it.
     computer_use = await asyncio.to_thread(prepare_computer_use, check_id, SKILLS_CACHE_DIRECTORY)
+    uv = shutil.which("uv")
     if resumed is not None:
         prompt = _resume_prompt(
             request, directory, root / resumed.check_id, previous, ask_first, keep_running, computer_use
         )
     else:
-        prompt = _prompt(request, target, directory, previous, ask_first, keep_running, computer_use)
+        prompt = _prompt(request, target, directory, previous, ask_first, keep_running, computer_use, uv is not None)
     agent_request = AgentRequest(
         initial_message=prompt,
         model=model,
@@ -711,6 +713,7 @@ async def _start(
         skill_directories=[skill_directory() / "skills", _dtu_skill()],
         images=copied,
         session_directory=session_directory,
+        path_directories=_path_directories(computer_use, uv),
     )
     return InProcessCheckRun(
         record,
@@ -986,6 +989,19 @@ def _install_command() -> str:
     return f"{cli} install-computer-use"
 
 
+def _path_directories(computer_use: ComputerUse | NotInstalled | Unavailable, uv: str | None) -> list[Path]:
+    """What the agent's PATH needs first: the cua-driver shim's folder, and uv's when a host left it off this PATH."""
+    directories: list[Path] = []
+    if isinstance(computer_use, ComputerUse | NotInstalled):
+        directories.append(computer_use.command.parent)
+    if uv is not None:
+        folder = Path(uv).parent
+        on_path = os.environ.get("PATH", "").split(os.pathsep)
+        if not any(entry and Path(entry) == folder for entry in on_path):
+            directories.append(folder)
+    return directories
+
+
 def _named_files(*texts: str | None) -> list[Path]:
     """Files the texts name that exist relative to the working directory, best effort."""
     found: list[Path] = []
@@ -1009,6 +1025,7 @@ def _prompt(
     ask_first: AskFirst,
     keep_running: bool,
     computer_use: ComputerUse | NotInstalled | Unavailable,
+    has_uv: bool,
 ) -> str:
     files = _named_files(request, target)
     named = NAMED_FILES.substitute(files=_listed(files)) if files else ""
@@ -1021,6 +1038,7 @@ def _prompt(
         computer_use=_computer_use_text(computer_use),
         ask_first=ASK_FIRST[ask_first],
         keep_running=KEEP_RUNNING[keep_running],
+        uv_missing="" if has_uv else UV_MISSING,
         dtu=_dtu_command(),
         report_format=(HERE / "report-format.md").read_text(encoding="utf-8"),
     )
@@ -1055,13 +1073,9 @@ def _evidence_text(directory: Path) -> str:
 
 def _computer_use_text(computer_use: ComputerUse | NotInstalled | Unavailable) -> str:
     if isinstance(computer_use, ComputerUse):
-        command = _quoted(str(computer_use.command))
-        text = COMPUTER_USE_ENABLED.substitute(command=command)
-        return text if computer_use.accessibility else f"{text} {NO_ACCESSIBILITY_TREE.substitute(command=command)}"
+        return COMPUTER_USE_ENABLED if computer_use.accessibility else f"{COMPUTER_USE_ENABLED} {NO_ACCESSIBILITY_TREE}"
     if isinstance(computer_use, NotInstalled):
-        return COMPUTER_USE_NOT_INSTALLED.substitute(
-            install=_install_command(), command=_quoted(str(computer_use.command))
-        )
+        return COMPUTER_USE_NOT_INSTALLED.substitute(install=_install_command())
     if computer_use.remedy is None:
         return COMPUTER_USE_UNSUPPORTED.substitute(reason=computer_use.reason)
     return COMPUTER_USE_OFF.substitute(reason=computer_use.reason, remedy=computer_use.remedy)

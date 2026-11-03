@@ -21,13 +21,12 @@ Cause: `patches/order-summary.patch` adds an Order summary to `src/WebApp/Compon
 
 ## Setup
 
-The project is eShop at upstream commit `913acea6` with the patch applied, as a repository of one commit. Nothing was installed or built: the machine needs the .NET 10 SDK (`global.json`), and Ubuntu's `libicu74` for .NET to start. `dotnet run --project src/eShop.AppHost` builds everything, fetches the Aspire CLI, and starts Postgres, Redis, and RabbitMQ on the machine's Docker. The store is at https://localhost:7298 and sign-in at https://localhost:5243. The Postgres container outlives the AppHost, so the orders in the task's materials are those in the database after the check, however the agent stopped the shop.
+The project is eShop at upstream commit `913acea6` with the patch applied, as a repository of one commit. Nothing was built. The machine has the .NET SDK `10.0.302` (`global.json`), Ubuntu's `libicu74` for .NET to start, and the Aspire CLI `13.6.0` (`aspire.config.json`). `dotnet run --project src/eShop.AppHost` builds everything and starts Postgres, Redis, and RabbitMQ on the machine's Docker. The store is at https://localhost:7298 and sign-in at https://localhost:5243. The Postgres container outlives the AppHost, so the orders in the task's materials are those in the database after the check, however the agent stopped the shop.
 
 ## Not defects
 
 These are upstream eShop behavior, or setup of the machine:
 
-- .NET does not start until libicu is installed.
 - There is no sign-up page. Customers are the seeded users `alice` and `bob`.
 - The https development certificate is not trusted on Linux; Aspire prints that developer certificates may not be fully trusted.
 - "Place order" is never disabled while an order is submitted, in upstream too. Only the duplicate order is the defect.

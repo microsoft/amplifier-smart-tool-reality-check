@@ -12,6 +12,7 @@ from common.context import Criterion, EvaluationError, RunContext
 from common.environment import PROJECT
 
 TASK = Path(__file__).resolve().parent
+MACHINE = environment.Machine(tag="reality-check-evaluation-edit-replace-01:eval", context=TASK / "machine")
 CACHE = TASK / ".cache"
 PATCH = TASK / "patches" / "replace-all.patch"
 EDIT_REPOSITORY = "https://github.com/microsoft/edit"
@@ -19,8 +20,8 @@ EDIT_REPOSITORY = "https://github.com/microsoft/edit"
 EDIT_COMMIT = "cb6de0a8966aecd01d19a3541dab1829d0e679ca"
 DESCRIPTION = (
     "Microsoft Edit, the Rust terminal text editor, at main cb6de0a8 with patches/replace-all.patch applied, placed "
-    "in ~/project as a repository of one commit, so the patch shows in no diff. Nothing is built or installed: the "
-    "agent installs Rust, and ICU for search, itself. The patch adds two defects to Replace All: each replacement "
+    "in ~/project as a repository of one commit, so the patch shows in no diff. The machine has what building it "
+    "takes, Rust 1.93, a C compiler, and ICU for search, but nothing is built. The patch adds two defects to Replace All: each replacement "
     "is its own undo step, so one Ctrl+Z undoes only the last one, and the cursor afterward lands one column right "
     "of the end of the last replacement for each wide character, such as CJK or emoji, before it on that line. It "
     "also adds assets/highlighting-tests/wide-chars.txt, a sample with wide characters. The agent must build the "
@@ -70,7 +71,7 @@ RUBRIC = {
 def run(context: RunContext) -> None:
     with context.step("build"):
         checkout = _checkout()
-    with environment.launch(context, TASK / "environment") as env:
+    with environment.launch(context, TASK / "environment", MACHINE) as env:
         with context.step("setup"):
             install.setup(env, context)
         with context.step("place"):

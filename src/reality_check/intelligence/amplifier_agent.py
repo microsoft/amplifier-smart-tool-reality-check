@@ -37,7 +37,7 @@ from amplifier_agent import (
 )
 
 from reality_check.intelligence.events import EventLog, fresh_input
-from reality_check.intelligence.interface import state_directory
+from reality_check.intelligence.interface import agent_path, state_directory
 from reality_check.intelligence.schemas import (
     IMAGE_MEDIA_TYPES,
     AgentEvent,
@@ -276,6 +276,8 @@ class AmplifierAgentRun:
             working_directory=working_directory,
             sessions_directory=request.session_directory or state_directory("amplifier-agent") / "sessions",
         )
+        if (path := agent_path(request)) is not None:
+            options.environment = {"PATH": path}
         if request.reasoning_effort is not None:
             options.reasoning_effort = request.reasoning_effort
         return options

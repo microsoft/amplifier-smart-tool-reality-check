@@ -20,14 +20,14 @@ ASK_FIRST: dict[AskFirst, str] = {
 }
 
 # $computer_use in prompt.md and resume-prompt.md. Each states a fact; $ask_first decides what the agent does about it.
-COMPUTER_USE_ENABLED = Template("Computer use is enabled through the CLI `$command`; see the using-computer-use skill.")
-NO_ACCESSIBILITY_TREE = Template(
-    "This desktop gives no accessibility tree, so work from screenshots; `$command doctor` says why."
+COMPUTER_USE_ENABLED = "Computer use is enabled through the CLI `cua-driver`; see the using-computer-use skill."
+NO_ACCESSIBILITY_TREE = (
+    "This desktop gives no accessibility tree, so work from screenshots; `cua-driver doctor` says why."
 )
 COMPUTER_USE_NOT_INSTALLED = Template(
     "Computer use is not installed yet. When the software needs its desktop UI driven, install it with `$install`: "
     "it asks nothing and changes nothing outside reality-check's own folder. Within a few seconds of it succeeding, "
-    "computer use is enabled through the CLI `$command` (`$command status` says when it runs); see the "
+    "computer use is enabled through the CLI `cua-driver` (`cua-driver status` says when it runs); see the "
     "using-computer-use skill. If the install fails, computer use is not enabled, and the install's error says why."
 )
 COMPUTER_USE_OFF = Template(
@@ -61,6 +61,9 @@ EARLIER_EVIDENCE = Template(
     "What you recorded before this request is in `$evidence`; refer to those files relative to the new report too, "
     "such as `${relative}01-open-home.png`."
 )
+
+# $uv_missing in prompt.md, when uv is not on this machine
+UV_MISSING = " uv is not on this machine, so use the tools it has instead."
 
 # $named_files in prompt.md
 NAMED_FILES = Template("\nThe request names these files:\n\n$files\n")

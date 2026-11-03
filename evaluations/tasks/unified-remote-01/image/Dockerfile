@@ -6,6 +6,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates curl dbus git libpam-systemd openssh-server sudo systemd systemd-sysv \
+        dnsutils file iproute2 iputils-ping less lsof netcat-openbsd unzip wget xz-utils \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.12.2 /uv /uvx /usr/local/bin/
 # Lingering starts the user's service manager, and so Unified, at boot rather than at first login. The task sets the

@@ -2,7 +2,7 @@
 
 These evaluations run reality-check, or an agent CLI as a baseline, on realistic tasks and record each run's time, cost, agent trajectory, and changes, with a judge's score.
 Each run puts one task in its own evaluation environment, a universe from the task's `environment/` profile.
-That environment is a bare developer machine with a nested Docker daemon, built from `environment/Dockerfile`.
+That environment is a developer machine with a nested Docker daemon, built on the host from `environment/Dockerfile`, or from a task's own machine built on it, and given the universe's certificate authority by `environment/twin/Dockerfile`.
 reality-check is installed there the way the README tells a user to, from this checkout, which the environment serves at the repository's GitHub URL.
 Then the task runs the capability, collects everything the agent did, and has a judge agent grade the result in the same environment.
 
@@ -31,15 +31,17 @@ Needs Docker on the host and the credentials of each agent provider used: for co
 
 ```text
 run.py              list, run, waiting, stop, cleanup
-environment/        the common developer machine; task profiles build their twin from it
+environment/        the common developer machine, built on the host as reality-check-evaluation-machine:eval
+  twin/             what every task's twin adds to its machine: the universe's certificate authority
 common/             optional helpers for tasks
 data/               what tasks share, used as it is
-  github-desktop/   the twin the desktop-app tasks build: a Linux desktop with GitHub Desktop and a repository in progress
+  github-desktop/   the desktop-app tasks' machine: a Linux desktop with GitHub Desktop and a repository in progress
   todo-app.zip      the small todo web app the trigger tasks place in ~/project
 tasks/<name>/
   task.py           the whole task
   expected.md       the answer key
   environment/      the task's profile, and anything it builds
+  machine/          optional: the task's own machine, FROM reality-check-evaluation-machine:eval
   ...               whatever else the task uses
 runs/               gitignored
 ```
@@ -67,7 +69,7 @@ A batch skips the tasks that do not support its capability, and says so.
 
 `tasks/excalidraw-01/task.py` is a complete task that uses every helper:
 
-1. `environment.launch`: start the task's evaluation environment, and destroy it at the end unless the run has `--keep`.
+1. `environment.launch`: build the machine images on the host, the common one and the task's `machine` when it passes one, then start the task's evaluation environment, and destroy it at the end unless the run has `--keep`. A twin builds `FROM` an image on the host, so Buildx must use the `docker` driver.
 2. `install.setup`: install what the run's capability needs, as a user does: the agent provider's prerequisites, then reality-check from this checkout, with computer use when the task asks; for a baseline, only the provider's CLI.
 3. Place the task's files in `~/project` and its images in the nested Docker daemon.
 4. `collect.baseline`: record the time and the installed packages. The host keeps this data.

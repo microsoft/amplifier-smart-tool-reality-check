@@ -17,8 +17,9 @@ $ask_first
 
 $keep_running
 Never destroy a universe, process, or anything else you did not start.
-Do actions that change or remove the user's own data, such as commits, deletions, and discards, on a copy of it, and record its state before and after. When you cannot make a copy, mark the item not checked and say what it needs.
-For scripts and helpers, use `uv run`, with `--with <package>` or inline script dependencies, rather than `python3`, `pip`, or `jq`, which may be missing.
+Stop a process by its ID (`pgrep`, then `kill <pid>`; `Stop-Process -Id` on Windows), not by a pattern with `pkill -f` or `killall` would could end up matching your own shell.
+Do actions that change or remove the user's own data, such as commits, deletions, and discards, on a copy of it, and record its state before and after. Put the copy under the user's home folder, not in a temporary folder such as `/tmp`, so the app treats it as it treats the original: Linux, for example, refuses to move files on `/tmp` to the trash. When you cannot make a copy, mark the item not checked and say what it needs.
+Write each helper script as a file with its dependencies inline (`uv add --script <file> <package>`) and run it with `uv run <file>`. For a one-off command, use `uv run --with <package>`. This reaches any package on PyPI; do not use `python3`, `pip`, or `jq`, which may be missing.$uv_missing
 
 You have the skills reaching-software, using-software, using-computer-use, and gathering-evidence, and Digital Twin Universe as a skill and as the CLI `$dtu`.
 
