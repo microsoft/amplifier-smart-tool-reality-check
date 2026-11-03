@@ -129,13 +129,13 @@ reality-check list-intelligence-models
 
 `lib.list_intelligence_models()`, printed as JSON.
 
-## reality-check install-computer-use
+## reality-check install
 
 ```bash
-reality-check install-computer-use
+reality-check install [--component computer-use|browser]...
 ```
 
-`lib.install_computer_use()`, printed as JSON.
+`lib.install(components)`, printed as JSON. Exits 1 when `complete` is false.
 
 ## Skills for checking software
 
@@ -143,6 +143,7 @@ reality-check install-computer-use
 reality-check reaching-software-skill
 reality-check using-software-skill
 reality-check using-computer-use-skill
+reality-check using-browser-skill
 reality-check gathering-evidence-skill
 ```
 

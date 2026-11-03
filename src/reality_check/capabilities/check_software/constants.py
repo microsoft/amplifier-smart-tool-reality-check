@@ -39,6 +39,26 @@ COMPUTER_USE_UNSUPPORTED = Template(
     "needs its desktop UI driven."
 )
 
+# $browser in prompt.md and resume-prompt.md, stating a fact the same way.
+BROWSER_ENABLED = Template(
+    "A headless browser is enabled through the CLI `agent-browser`; pass `--session $session` on every command, and "
+    "see the using-browser skill."
+)
+BROWSER_NOT_INSTALLED = Template(
+    "A headless browser is not installed yet. When the software has a web UI, install it with `$install`: it asks "
+    "nothing, puts agent-browser in reality-check's own folder, and when no browser launches, downloads Chrome for "
+    "Testing and, where sudo needs no password, the system libraries it needs. Once it succeeds, the browser is enabled through "
+    "the CLI `agent-browser`; pass `--session $session` on every command, and see the using-browser skill. If the "
+    "install fails, its error says why and what fixes it."
+)
+BROWSER_OFF = Template(
+    "A headless browser is not enabled: $reason To enable it: $remedy This matters only for software with a web UI."
+)
+BROWSER_UNSUPPORTED = Template(
+    "A headless browser is not enabled: $reason It cannot be enabled on this machine. This matters only for software "
+    "with a web UI."
+)
+
 # $keep_running in prompt.md and resume-prompt.md
 KEEP_RUNNING: dict[bool, str] = {
     False: (

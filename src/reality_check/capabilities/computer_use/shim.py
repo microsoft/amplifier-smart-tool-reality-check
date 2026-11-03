@@ -11,6 +11,11 @@ from reality_check.capabilities.computer_use.target import TELEMETRY_OFF, Target
 def write_shim(target: Target, executable: Path, cache_directory: Path) -> Path:
     """Write the shim for `executable` under `cache_directory`, named by its content so checks share it."""
     name, text = _shim(target, executable)
+    return write_named_by_content(cache_directory, name, text)
+
+
+def write_named_by_content(cache_directory: Path, name: str, text: str) -> Path:
+    """Write an executable `name` holding `text` in a folder of `cache_directory` named by that text."""
     path = cache_directory / hashlib.sha256(text.encode("utf-8")).hexdigest()[:16] / name
     if not path.is_file():
         path.parent.mkdir(parents=True, exist_ok=True)

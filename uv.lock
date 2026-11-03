@@ -786,8 +786,8 @@ wheels = [
 
 [[package]]
 name = "digital-twin-universe"
-version = "0.6.4"
-source = { git = "https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe?rev=8435e711eff63d533475861962f267b91fc5917a#8435e711eff63d533475861962f267b91fc5917a" }
+version = "0.6.8"
+source = { git = "https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe?rev=cb80c49a4fced2939fa59863db05c62e9a42688a#cb80c49a4fced2939fa59863db05c62e9a42688a" }
 dependencies = [
     { name = "certifi" },
     { name = "fastapi" },
@@ -1982,7 +1982,7 @@ wheels = [
 
 [[package]]
 name = "reality-check"
-version = "0.6.1"
+version = "0.7.0"
 source = { editable = "." }
 default-groups = "all"
 dependencies = [
@@ -2034,7 +2034,7 @@ requires-dist = [
     { name = "amplifier-agent", marker = "extra == 'amplifier-agent'", git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fpython&rev=v0.25.0" },
     { name = "certifi", specifier = ">=2026.10.19,<2027.0.0" },
     { name = "claude-agent-sdk", marker = "extra == 'claude'", specifier = ">=0.2.167,<0.3.0" },
-    { name = "digital-twin-universe", git = "https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe?rev=8435e711eff63d533475861962f267b91fc5917a" },
+    { name = "digital-twin-universe", git = "https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe?rev=cb80c49a4fced2939fa59863db05c62e9a42688a" },
     { name = "fastapi", specifier = ">=0.141.1,<0.142.0" },
     { name = "filelock", specifier = ">=4.0.9,<5.0.0" },
     { name = "github-copilot-sdk", marker = "extra == 'copilot'", specifier = ">=1.0.21,<2.0.0" },

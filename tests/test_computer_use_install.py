@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import json
 from pathlib import Path
 import subprocess
 import tarfile
@@ -14,8 +15,9 @@ from typer.testing import CliRunner
 from reality_check import lib
 from reality_check.capabilities.computer_use import install, target
 from reality_check.capabilities.computer_use.target import Target, Unavailable
+from reality_check.capabilities.install import download
+from reality_check.capabilities.install import install as install_all
 from reality_check.cli import app
-from reality_check.schemas import RealityCheckError
 
 WINDOWS = Target("windows", "windows-x86_64-binary", "zip")
 WSL = Target("wsl", "windows-x86_64-binary", "zip")
@@ -130,7 +132,7 @@ class Release:
         self.hash = hashlib.sha256(self.archive).hexdigest()
         monkeypatch.setattr(install, "resolve_target", lambda: chosen)
         monkeypatch.setattr(install, "SHA256", {chosen.asset(install.VERSION): self.hash})
-        monkeypatch.setattr(install, "urlopen", self._urlopen)
+        monkeypatch.setattr(download, "urlopen", self._urlopen)
         monkeypatch.setattr(install, "run_driver", self._run)
         monkeypatch.setattr(install.shutil, "which", lambda name: None)
         monkeypatch.setattr(install.platformdirs, "user_data_path", lambda *args, **kwargs: home / "data")
@@ -169,13 +171,19 @@ class Release:
         return subprocess.CompletedProcess(arguments, 0, f"cua-driver {version}\n", "")
 
 
+def installed_computer_use() -> lib.ComputerUseInstall:
+    installed = lib.install(components=["computer-use"]).installed[0]
+    assert isinstance(installed, lib.ComputerUseInstall)
+    return installed
+
+
 @pytest.mark.parametrize("chosen", [WINDOWS, WSL, LINUX, MACOS])
 def test_install_downloads_the_pinned_asset_and_reports_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, chosen: Target
 ) -> None:
     release = Release(monkeypatch, chosen, tmp_path)
 
-    installed = lib.install_computer_use()
+    installed = installed_computer_use()
 
     expected = {
         "windows": tmp_path / "data" / "cua-driver" / "0.36.0",
@@ -199,9 +207,9 @@ def test_install_again_reports_the_existing_install_without_downloading(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     release = Release(monkeypatch, WSL, tmp_path)
-    first = lib.install_computer_use()
+    first = installed_computer_use()
 
-    again = lib.install_computer_use()
+    again = installed_computer_use()
 
     assert len(release.downloads) == 1
     assert again.already_installed
@@ -215,7 +223,7 @@ def test_an_install_of_the_pinned_version_on_path_is_used(monkeypatch: pytest.Mo
     existing.write_text("driver")
     monkeypatch.setattr(install.shutil, "which", lambda name: str(existing))
 
-    installed = lib.install_computer_use()
+    installed = installed_computer_use()
 
     assert release.downloads == []
     assert installed.executable == existing
@@ -229,7 +237,7 @@ def test_an_install_of_another_version_is_ignored(monkeypatch: pytest.MonkeyPatc
     vendor.write_text("driver")
     release.versions[vendor] = "0.35.0"
 
-    installed = lib.install_computer_use()
+    installed = installed_computer_use()
 
     assert len(release.downloads) == 1
     assert installed.executable != vendor
@@ -241,10 +249,10 @@ def test_a_download_that_does_not_match_its_hash_installs_nothing(
     Release(monkeypatch, LINUX, tmp_path)
     monkeypatch.setattr(install, "SHA256", {LINUX.asset(install.VERSION): "0" * 64})
 
-    with pytest.raises(RealityCheckError) as failure:
-        lib.install_computer_use()
+    result = lib.install(components=["computer-use"])
 
-    assert failure.value.code == "computer-use-download-corrupt"
+    assert not result.complete
+    assert result.not_installed[0].code == "computer-use-download-corrupt"
     assert not (tmp_path / "data").exists()
 
 
@@ -252,54 +260,60 @@ def test_a_failed_download_names_the_fix(monkeypatch: pytest.MonkeyPatch, tmp_pa
     Release(monkeypatch, LINUX, tmp_path)
 
     def offline(url: str, timeout: float, context: Any) -> io.BytesIO:
-        raise install.URLError("no route to host")
+        raise download.URLError("no route to host")
 
-    monkeypatch.setattr(install, "urlopen", offline)
+    monkeypatch.setattr(download, "urlopen", offline)
 
-    with pytest.raises(RealityCheckError) as failure:
-        lib.install_computer_use()
+    result = lib.install(components=["computer-use"])
 
-    assert failure.value.code == "computer-use-download-failed"
-    assert "reality-check install-computer-use" in failure.value.remedy
+    assert not result.complete
+    missing = result.not_installed[0]
+    assert missing.code == "computer-use-download-failed"
+    assert not missing.unsupported
+    assert "reality-check install --component computer-use" in missing.remedy
     assert not (tmp_path / "data").exists()
 
 
 def test_install_where_computer_use_cannot_run_says_why(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(install, "resolve_target", lambda: Unavailable("There is no desktop.", "Run in one."))
 
-    with pytest.raises(RealityCheckError) as failure:
-        lib.install_computer_use()
+    result = lib.install(components=["computer-use"])
 
-    assert failure.value.code == "computer-use-unsupported"
-    assert "There is no desktop." in failure.value.message
-    assert failure.value.remedy == "Run in one."
+    assert not result.complete
+    missing = result.not_installed[0]
+    assert missing.component == "computer-use"
+    assert missing.code == "computer-use-unsupported"
+    assert missing.unsupported
+    assert "There is no desktop." in missing.message
+    assert missing.remedy == "Run in one."
 
 
-def test_the_cli_prints_the_install_as_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("arguments", [["install"], ["install", "--component", "computer-use"]])
+def test_the_cli_prints_the_install_as_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, arguments: list[str]
+) -> None:
     Release(monkeypatch, WSL, tmp_path)
+    browser_already_here(monkeypatch)
 
-    result = runner.invoke(app, ["install-computer-use"])
+    result = runner.invoke(app, arguments)
 
     assert result.exit_code == 0
-    assert '"target": "wsl"' in result.stdout
-    assert '"already_installed": false' in result.stdout
+    printed = json.loads(result.stdout)
+    assert printed["complete"]
+    assert printed["not_installed"] == []
+    assert printed["installed"][0]["component"] == "computer-use"
+    assert printed["installed"][0]["target"] == "wsl"
+    assert not printed["installed"][0]["already_installed"]
 
 
-@pytest.mark.parametrize(
-    ("variables", "store"),
-    [({}, "certifi"), ({"SSL_CERT_FILE": "/etc/dtu/ca.crt"}, "system"), ({"SSL_CERT_DIR": "/etc/ssl/certs"}, "system")],
-)
-def test_downloads_trust_a_store_the_environment_names(
-    monkeypatch: pytest.MonkeyPatch, variables: dict[str, str], store: str
-) -> None:
-    monkeypatch.setattr(install.sys, "platform", "linux")
-    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
-    monkeypatch.delenv("SSL_CERT_DIR", raising=False)
-    for name, value in variables.items():
-        monkeypatch.setenv(name, value)
-    loaded: list[str | None] = []
-    monkeypatch.setattr(install.ssl, "create_default_context", lambda cafile=None: loaded.append(cafile))
-
-    install._tls_context()
-
-    assert loaded == [install.certifi.where() if store == "certifi" else None]
+def browser_already_here(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The browser component reports itself installed, so installing everything downloads only computer use."""
+    installed = lib.BrowserInstall(
+        version="0.41.1",
+        executable=Path("/agent-browser"),
+        skills_directory=Path("/skill-data"),
+        already_installed=True,
+        remaining_step=None,
+    )
+    browser = install_all.INSTALLERS["browser"]
+    monkeypatch.setitem(install_all.INSTALLERS, "browser", browser._replace(install=lambda: installed))

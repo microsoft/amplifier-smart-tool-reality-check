@@ -70,10 +70,11 @@ CAPABILITIES = (
         skill="capabilities/check_software/skill_list_intelligence_models.md",
     ),
     Capability(
-        "install-computer-use",
-        "Install, once, the pinned cua-driver that checks drive desktop apps with.",
+        "install",
+        "Install, once, what checks use beyond the agent, such as cua-driver for desktop apps; everything this "
+        "machine supports by default.",
         model_backed=False,
-        skill="capabilities/computer_use/skill_install_computer_use.md",
+        skill="capabilities/install/skill_install.md",
     ),
     Capability(
         "reaching-software-skill",
@@ -92,6 +93,12 @@ CAPABILITIES = (
         "Print the skill for driving a desktop app's real UI through cua-driver: screenshots, the accessibility tree, input.",
         model_backed=False,
         skill="skills/using-computer-use/SKILL.md",
+    ),
+    Capability(
+        "using-browser-skill",
+        "Print the skill for driving a web app's real UI in a headless browser through agent-browser: pages, input, screenshots.",
+        model_backed=False,
+        skill="skills/using-browser/SKILL.md",
     ),
     Capability(
         "gathering-evidence-skill",
@@ -142,11 +149,16 @@ def skill_resources() -> list[str]:
     return _installed(SKILL_RESOURCES)
 
 
-def skill(capability: str | None = None) -> str:
-    """The tool's skill, or one capability's skill when named."""
+def skill(capability: str | None = None, machine: str | None = None) -> str:
+    """The tool's skill, or one capability's skill when named, ending with `machine` when given.
+
+    Args:
+        capability: The capability whose skill to return; the tool's skill when None.
+        machine: Markdown on what the capability does on this machine, computed by the caller and appended.
+    """
     if capability is None:
         return _tool_skill()
-    return _capability_skill(capability)
+    return _capability_skill(capability, machine)
 
 
 def _tool_skill() -> str:
@@ -166,7 +178,7 @@ def _tool_skill() -> str:
     return _document(manifest.name, [], manifest.name, body, skill_resources())
 
 
-def _capability_skill(name: str) -> str:
+def _capability_skill(name: str, machine: str | None) -> str:
     """One capability's skill: the same shape as the tool's, scoped to what it takes, returns, and fails on."""
     entry = capability(name)
     tool = load_manifest().name
@@ -174,6 +186,8 @@ def _capability_skill(name: str) -> str:
     body_path, *resources = _installed((entry.skill, *entry.resources))
     kind = "Model-backed." if entry.model_backed else "Deterministic."
     body = [kind, "", skill_body(body_path)]
+    if machine:
+        body += ["", machine]
     return _document(
         f"{tool} {entry.name}",
         [f"Part of `{tool}`; `{tool} --help` is the tool's skill."],

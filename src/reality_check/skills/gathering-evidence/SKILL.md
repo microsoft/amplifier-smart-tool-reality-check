@@ -29,11 +29,13 @@ work wherever the report is read.
 
 ## What to record, by kind
 
-- Web: a screenshot after each step that matters (full page when layout matters); the network
-  log as HAR or a list of method, URL, status, size, time, and for a redirect its `Location`
-  header (HAR keeps it); the console messages and page
-  errors; timings such as time to first content and to the page being usable. Playwright records
-  HAR with `record_har_path` and the console with `page.on("console")`; CDP gives the same.
+- Web: a screenshot after each step that matters (full page when layout matters, and at a phone,
+  a tablet, and a desktop width when it differs between them); the network log as HAR or a list
+  of method, URL, status, size, time, and for a redirect its `Location` header (HAR keeps it);
+  the console messages and page errors; timings such as time to first content and to the page
+  being usable. With agent-browser, these are `screenshot <path>` (`--full` for the full page),
+  `set viewport <width> <height>`, `network har start` then `network har stop <path>`, `console`,
+  and `errors`.
 - CLI: the exact command, its stdout, stderr, and exit code, in one transcript per step; the
   files it wrote when they matter.
 - Terminal UIs, such as editors: run the app in tmux with a UTF-8 locale. After each step that
@@ -57,6 +59,10 @@ work wherever the report is read.
   error; the browser's error page often screenshots blank.
 - It can show what it is cited for. A screen image that does not draw the cursor is no evidence of
   where the cursor is; cite a record that does.
+- You looked at it. Open every screenshot you cite and check that it shows what you cite it for;
+  a file that was saved is not proof of what the screen showed.
+- A failure is repeated once before it is a finding, and written down when it is found, not
+  rebuilt from memory at the end.
 - It is kept as captured: do not merge, rename, or delete evidence files afterwards.
 - Large responses, repeated polling, and slow requests are findings too; keep the record that
   shows them.

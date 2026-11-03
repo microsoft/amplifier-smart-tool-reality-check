@@ -22,8 +22,15 @@ import platformdirs
 from pydantic import BaseModel
 import yaml
 
+from reality_check.capabilities.browser.prepare import Browser, prepare_browser
+from reality_check.capabilities.browser.prepare import NotInstalled as BrowserNotInstalled
+from reality_check.capabilities.browser.target import Unavailable as BrowserUnavailable
 from reality_check.capabilities.check_software.constants import (
     ASK_FIRST,
+    BROWSER_ENABLED,
+    BROWSER_NOT_INSTALLED,
+    BROWSER_OFF,
+    BROWSER_UNSUPPORTED,
     COMPUTER_USE_ENABLED,
     COMPUTER_USE_NOT_INSTALLED,
     COMPUTER_USE_OFF,
@@ -80,7 +87,7 @@ from reality_check.schemas import (
 
 HERE = Path(__file__).parent
 # The skills under the package's `skills/` directory that every check's agent gets.
-CHECKING_SKILLS = ("reaching-software", "using-software", "using-computer-use", "gathering-evidence")
+CHECKING_SKILLS = ("reaching-software", "using-software", "using-computer-use", "using-browser", "gathering-evidence")
 DTU_SKILL = "digital-twin-universe"
 DTU_COMMAND = "digital-twin-universe"
 # Skills made at run time, outside the project the agent works in.
@@ -169,6 +176,7 @@ class InProcessCheckRun:
         timeout_seconds: int | None,
         next_command: str,
         computer_use: ComputerUse | NotInstalled | Unavailable,
+        browser: Browser | BrowserNotInstalled | BrowserUnavailable,
     ) -> None:
         self.check_id = record.check_id
         self.directory = directory
@@ -178,6 +186,7 @@ class InProcessCheckRun:
         self._timeout_seconds = timeout_seconds
         self._next = next_command
         self._computer_use = computer_use
+        self._browser = browser
         self._preparing: asyncio.Future[ComputerUse | NotInstalled | Unavailable] | None = None
         self._events: list[CheckEvent] = []
         # Replaced on every append, so a reader waits on the one current when it ran out of events.
@@ -296,6 +305,7 @@ class InProcessCheckRun:
             if wrap_up is not None:
                 wrap_up.cancel()
             await self._release_computer_use()
+            await self._release_browser()
         if timed_out:
             report = self._report(outcome.text, "it timed out")
             so_far = (
@@ -340,6 +350,12 @@ class InProcessCheckRun:
         if isinstance(self._computer_use, ComputerUse):
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(self._computer_use.release)
+
+    async def _release_browser(self) -> None:
+        """Close the check's browser sessions however the check ends; a failure to close one never fails the check."""
+        if isinstance(self._browser, Browser | BrowserNotInstalled):
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(self._browser.release)
 
     async def _wrap_up(self, timeout_seconds: int) -> None:
         """Tell the agent how little time is left, so it reports what it has before the check stops it."""
@@ -696,13 +712,16 @@ async def _start(
     write_record(directory, record)
     # Decided again on every start, so a check resumed after its caller enabled computer use gets it.
     computer_use = await asyncio.to_thread(prepare_computer_use, check_id, SKILLS_CACHE_DIRECTORY)
+    browser = await asyncio.to_thread(prepare_browser, check_id, SKILLS_CACHE_DIRECTORY)
     uv = shutil.which("uv")
     if resumed is not None:
         prompt = _resume_prompt(
-            request, directory, root / resumed.check_id, previous, ask_first, keep_running, computer_use
+            request, directory, root / resumed.check_id, previous, ask_first, keep_running, computer_use, browser
         )
     else:
-        prompt = _prompt(request, target, directory, previous, ask_first, keep_running, computer_use, uv is not None)
+        prompt = _prompt(
+            request, target, directory, previous, ask_first, keep_running, computer_use, browser, uv is not None
+        )
     agent_request = AgentRequest(
         initial_message=prompt,
         model=model,
@@ -713,7 +732,7 @@ async def _start(
         skill_directories=[skill_directory() / "skills", _dtu_skill()],
         images=copied,
         session_directory=session_directory,
-        path_directories=_path_directories(computer_use, uv),
+        path_directories=_path_directories(computer_use, browser, uv),
     )
     return InProcessCheckRun(
         record,
@@ -723,6 +742,7 @@ async def _start(
         timeout_seconds,
         _next_command(check_id, checks_directory),
         computer_use,
+        browser,
     )
 
 
@@ -982,18 +1002,24 @@ def _dtu_command() -> str:
     return _quoted(found) if found else f"{_quoted(sys.executable)} -m digital_twin_universe.cli"
 
 
-def _install_command() -> str:
-    """`install-computer-use` from this environment's CLI, which need not be on the agent's PATH."""
+def _install_command(component: str) -> str:
+    """`install --component <component>` from this environment's CLI, which need not be on the agent's PATH."""
     found = shutil.which(DISTRIBUTION, path=str(Path(sys.executable).parent))
     cli = _quoted(found) if found else f"{_quoted(sys.executable)} -m reality_check.cli"
-    return f"{cli} install-computer-use"
+    return f"{cli} install --component {component}"
 
 
-def _path_directories(computer_use: ComputerUse | NotInstalled | Unavailable, uv: str | None) -> list[Path]:
-    """What the agent's PATH needs first: the cua-driver shim's folder, and uv's when a host left it off this PATH."""
+def _path_directories(
+    computer_use: ComputerUse | NotInstalled | Unavailable,
+    browser: Browser | BrowserNotInstalled | BrowserUnavailable,
+    uv: str | None,
+) -> list[Path]:
+    """What the agent's PATH needs first: the shims' folders, and uv's when a host left it off this PATH."""
     directories: list[Path] = []
     if isinstance(computer_use, ComputerUse | NotInstalled):
         directories.append(computer_use.command.parent)
+    if isinstance(browser, Browser | BrowserNotInstalled):
+        directories.append(browser.command.parent)
     if uv is not None:
         folder = Path(uv).parent
         on_path = os.environ.get("PATH", "").split(os.pathsep)
@@ -1025,6 +1051,7 @@ def _prompt(
     ask_first: AskFirst,
     keep_running: bool,
     computer_use: ComputerUse | NotInstalled | Unavailable,
+    browser: Browser | BrowserNotInstalled | BrowserUnavailable,
     has_uv: bool,
 ) -> str:
     files = _named_files(request, target)
@@ -1036,6 +1063,7 @@ def _prompt(
         evidence=_evidence_text(directory),
         previous_checks=_previous_checks_text(previous_checks),
         computer_use=_computer_use_text(computer_use),
+        browser=_browser_text(browser),
         ask_first=ASK_FIRST[ask_first],
         keep_running=KEEP_RUNNING[keep_running],
         uv_missing="" if has_uv else UV_MISSING,
@@ -1052,6 +1080,7 @@ def _resume_prompt(
     ask_first: AskFirst,
     keep_running: bool,
     computer_use: ComputerUse | NotInstalled | Unavailable,
+    browser: Browser | BrowserNotInstalled | BrowserUnavailable,
 ) -> str:
     return Template((HERE / "resume-prompt.md").read_text(encoding="utf-8")).substitute(
         request=request.strip(),
@@ -1061,6 +1090,7 @@ def _resume_prompt(
         ),
         previous_checks=_previous_checks_text(previous_checks),
         computer_use=_computer_use_text(computer_use),
+        browser=_browser_text(browser),
         ask_first=ASK_FIRST[ask_first],
         keep_running=KEEP_RUNNING[keep_running],
         report_format=(HERE / "report-format.md").read_text(encoding="utf-8"),
@@ -1075,10 +1105,20 @@ def _computer_use_text(computer_use: ComputerUse | NotInstalled | Unavailable) -
     if isinstance(computer_use, ComputerUse):
         return COMPUTER_USE_ENABLED if computer_use.accessibility else f"{COMPUTER_USE_ENABLED} {NO_ACCESSIBILITY_TREE}"
     if isinstance(computer_use, NotInstalled):
-        return COMPUTER_USE_NOT_INSTALLED.substitute(install=_install_command())
+        return COMPUTER_USE_NOT_INSTALLED.substitute(install=_install_command("computer-use"))
     if computer_use.remedy is None:
         return COMPUTER_USE_UNSUPPORTED.substitute(reason=computer_use.reason)
     return COMPUTER_USE_OFF.substitute(reason=computer_use.reason, remedy=computer_use.remedy)
+
+
+def _browser_text(browser: Browser | BrowserNotInstalled | BrowserUnavailable) -> str:
+    if isinstance(browser, Browser):
+        return BROWSER_ENABLED.substitute(session=browser.session)
+    if isinstance(browser, BrowserNotInstalled):
+        return BROWSER_NOT_INSTALLED.substitute(install=_install_command("browser"), session=browser.session)
+    if browser.remedy is None:
+        return BROWSER_UNSUPPORTED.substitute(reason=browser.reason)
+    return BROWSER_OFF.substitute(reason=browser.reason, remedy=browser.remedy)
 
 
 def _previous_checks_text(previous_checks: list[Path]) -> str:

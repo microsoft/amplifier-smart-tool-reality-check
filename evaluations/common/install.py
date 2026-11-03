@@ -33,13 +33,13 @@ def setup(env: Environment, context: RunContext, computer_use: bool = False) -> 
         case "reality-check":
             provider_and_reality_check(env, context)
             if computer_use:
-                env.run_checked("install-computer-use", "reality-check install-computer-use")
+                env.run_checked("install-computer-use", "reality-check install --component computer-use")
         case "baseline":
             agent_cli(env, context)
         case "installed":
             provider_and_reality_check(env, context)
             if computer_use:
-                env.run_checked("install-computer-use", "reality-check install-computer-use")
+                env.run_checked("install-computer-use", "reality-check install --component computer-use")
             agent_cli(env, context)
             skill(env, context)
 

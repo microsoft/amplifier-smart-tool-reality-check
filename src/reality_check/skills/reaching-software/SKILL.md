@@ -31,7 +31,7 @@ which is which before you open anything.
   name, such as `http://home-server-2:3000`. A server bound to `127.0.0.1` answers only locally;
   say so in the report rather than changing how it is started without being asked.
 - Check reachability first with `curl -sS -o /dev/null -w '%{http_code} %{time_total}\n' <url>`
-  from the place the user's view is.
+  from the place the user's view is. That shows the URL answers, not that the UI works.
 
 ## Other machines
 

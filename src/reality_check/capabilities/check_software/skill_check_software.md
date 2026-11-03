@@ -44,7 +44,7 @@ result.status, result.report, result.next
 ```
 
 Desktop apps need computer use. When it is not installed, the check's agent installs it with
-`reality-check install-computer-use` and goes on; when the install fails, the agent says why.
+`reality-check install --component computer-use` and goes on; when the install fails, the agent says why.
 
 ## Arguments
 

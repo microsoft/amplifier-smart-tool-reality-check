@@ -17,6 +17,7 @@ import typer
 
 # Typer 0.27 vendors Click, so a command that overrides Click's own hooks has to speak the vendored types.
 from typer._click import Context, Parameter
+from typer._types import TyperChoice
 from typer.core import TyperCommand, TyperOption
 from typer.models import CommandFunctionType
 
@@ -24,6 +25,7 @@ from reality_check import lib
 from reality_check.adapters import mcp as mcp_adapter
 from reality_check.core.skill import DISTRIBUTION
 from reality_check.schemas import (
+    COMPONENTS,
     DEFAULT_CHECKS_DIRECTORY,
     DEFAULT_ORIGIN,
     DEFAULT_TIMEOUT_SECONDS,
@@ -316,9 +318,22 @@ def list_intelligence_models() -> None:
 
 
 @app.command()
-def install_computer_use() -> None:
-    """Install, once, the cua-driver checks drive desktop apps with, and print it as JSON. Deterministic."""
-    typer.echo(lib.install_computer_use().model_dump_json(indent=2))
+def install(
+    components: Annotated[
+        list[str] | None,
+        # Typer takes no list of a Literal, so the choices are given as the Literal's values.
+        typer.Option("--component", click_type=TyperChoice(COMPONENTS), help="Only this one; repeatable."),
+    ] = None,
+) -> None:
+    """Install, once, what checks use beyond the agent, and print what it installed as JSON. Deterministic.
+
+    Exits 1 when a component named is not installed, or, with none named, one this machine supports.
+    """
+    named = [component for component in COMPONENTS if component in components] if components else None
+    installed = lib.install(components=named)
+    typer.echo(installed.model_dump_json(indent=2))
+    if not installed.complete:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -337,6 +352,12 @@ def using_software_skill() -> None:
 def using_computer_use_skill() -> None:
     """Print the skill for driving a desktop app's real UI through cua-driver. Deterministic."""
     typer.echo(lib.using_computer_use_skill())
+
+
+@app.command()
+def using_browser_skill() -> None:
+    """Print the skill for driving a web app's real UI in a headless browser through agent-browser. Deterministic."""
+    typer.echo(lib.using_browser_skill())
 
 
 @app.command()

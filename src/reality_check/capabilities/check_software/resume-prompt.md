@@ -6,6 +6,7 @@ $request
 
 $previous_checks
 $computer_use
+$browser
 $ask_first
 $keep_running
 $evidence $earlier_evidence
