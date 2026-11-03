@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 from typing import Protocol
 
-from reality_check.core.skill import DISTRIBUTION, repository_url
+from reality_check.core.skill import DISTRIBUTION, repository_url, version
 from reality_check.intelligence.schemas import AgentEvent, AgentRequest, AgentResult, Steering
 from reality_check.schemas import AGENT_PROVIDERS, AgentProvider, RealityCheckError
 
@@ -158,4 +158,4 @@ def agent_path(request: AgentRequest) -> str | None:
 
 def _install_source(extra: str) -> str:
     url = repository_url()
-    return f'"{DISTRIBUTION}[{extra}] @ git+{url}"' if url else f'"{DISTRIBUTION}[{extra}]"'
+    return f'"{DISTRIBUTION}[{extra}] @ git+{url}@v{version()}"' if url else f'"{DISTRIBUTION}[{extra}]"'

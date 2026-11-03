@@ -1,6 +1,6 @@
 """One run's spec, its run.json record, and the context a task's `run` drives it through."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -112,7 +112,7 @@ class RunContext:
         self._report = report
 
     @contextmanager
-    def step(self, name: str) -> Iterator[None]:
+    def step(self, name: str) -> Generator[None]:
         """Mark `name` as the current step, and time it into `record.timings`."""
         self.record.step = name
         self.save()

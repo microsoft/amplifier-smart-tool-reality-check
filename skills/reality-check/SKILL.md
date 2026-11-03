@@ -17,13 +17,13 @@ Checks that an app works the way a real user would experience it, on your machin
 
 ```bash
 # as a CLI, choosing the agent provider(s) you want
-uv tool install "reality-check[all | copilot | amplifier-agent | codex | claude] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
+uv tool install "reality-check[all | copilot | amplifier-agent | codex | claude] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
 
 # as a library, from another project
-uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
+uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
 
 # once, without installing
-uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check" reality-check --help
+uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1" reality-check --help
 
 # once, to give checks everything they can use
 reality-check install
@@ -46,3 +46,18 @@ If `open_app` is not among your tools, the MCP server is not registered or the h
 it: `reality-check mcp --help` says how to register it.
 Without it, start `reality-check app` in the background, since it serves until stopped,
 and give them the URL it prints or open it automatically if your host supports it.
+
+## Keep it current
+
+Keep the tool up to date for the user by default if the permission mode allows it.
+Each release is a `v<version>` tag and an install stays on its tag, so `uv tool upgrade` does not move it.
+Find the newest release:
+
+```bash
+git ls-remote --tags --refs --sort=-v:refname https://github.com/microsoft/amplifier-smart-tool-reality-check "v*" | head -1
+```
+
+If it is newer than `reality-check --version`, run the install command again with that tag and the extras
+`uv tool list --show-extras` reports. For a library, run `uv add` again with the new tag.
+Update the skill with `npx skills add microsoft/amplifier-smart-tool-reality-check#<tag>`, adding `-g` for global installs.
+Do not try to get around restrictions or operate against the user's preferences to update tools (or skills).

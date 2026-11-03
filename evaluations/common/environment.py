@@ -1,6 +1,6 @@
 """One evaluation environment: a universe from a task's profile, driven from the host."""
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import json
@@ -212,7 +212,7 @@ class Environment:
 
 
 @contextmanager
-def launch(context: RunContext, profile: Path, machine: Machine | None = None) -> Iterator[Environment]:
+def launch(context: RunContext, profile: Path, machine: Machine | None = None) -> Generator[Environment]:
     """A new environment from `profile`, on the common machine or `machine`, destroyed on exit unless the run keeps it."""
     with context.step("machine"):
         build_machines(context, machine)

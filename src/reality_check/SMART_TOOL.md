@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.7.0
+version: 0.7.1
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do
 use_cases:
@@ -86,13 +86,13 @@ Not for unit tests, load testing, or security testing.
 
 ```bash
 # as a CLI
-uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
+uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
 
 # as a library, from another project
-uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check"
+uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
 
 # once, without installing
-uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check" reality-check --help
+uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1" reality-check --help
 
 # once, to give checks everything they can use
 reality-check install
@@ -105,7 +105,16 @@ reality-check install
 `[copilot]`, `[amplifier-agent]`, `[codex]`, or `[claude]` in its place for just one, or drop it for the deterministic
 capabilities only.
 
-Verify with `reality-check manifest`, which needs no credentials.
+Verify with `reality-check manifest`, which needs no credentials. Each release is a `v<version>` tag
+and an install stays on its tag, so `uv tool upgrade` does not move it. To upgrade, find the newest release:
+
+```bash
+git ls-remote --tags --refs --sort=-v:refname https://github.com/microsoft/amplifier-smart-tool-reality-check "v*" | head -1
+```
+
+If it is newer than `reality-check --version`, run the install command again with that tag and the extras
+`uv tool list --show-extras` reports, or `uv add` again with the new tag for a library. Update the skill with
+`npx skills add microsoft/amplifier-smart-tool-reality-check#<tag>`.
 
 ## Prerequisites
 
