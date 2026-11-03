@@ -62,7 +62,7 @@ NOTES_APP = "~/projects/notes-app"
 
 
 def run(context: RunContext) -> None:
-    with environment.launch(context, TASK / "environment") as env:
+    with environment.launch(context, TASK / "environment", environment.GITHUB_DESKTOP) as env:
         with context.step("setup"):
             install.setup(env, context, computer_use=True)
         with context.step("baseline"):

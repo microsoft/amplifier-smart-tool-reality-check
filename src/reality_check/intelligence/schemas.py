@@ -62,6 +62,10 @@ class AgentRequest(BaseModel):
         default=None, description="JSON schema the structured output must satisfy; None asks for text only"
     )
     images: list[Path] = Field(default_factory=list, description="Images shown to the agent with the initial message")
+    path_directories: list[Path] = Field(
+        default_factory=list,
+        description="Directories put first on the PATH of the agent's own processes, so it runs what they hold by name",
+    )
     session_directory: Path | None = Field(
         default=None,
         description="Where the agent provider keeps this run's session, so it can be read and resumed from there; None "

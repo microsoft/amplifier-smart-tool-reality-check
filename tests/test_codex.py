@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Callable
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -240,6 +241,7 @@ async def test_a_thread_gets_the_workspace_trusted_telemetry_off_and_no_agents_m
         'otel.metrics_exporter="none"',
         "feedback.enabled=false",
     )
+    assert config.env is None
     cwd = str(tmp_path.resolve())
     assert fake.thread_options == [
         {
@@ -260,6 +262,19 @@ async def test_a_thread_gets_the_workspace_trusted_telemetry_off_and_no_agents_m
     assert options["summary"].root.value == "detailed"
     assert "output_schema" not in options
     assert fake.closed == 1
+
+
+async def test_path_directories_go_first_on_the_runtime_s_path(
+    world: Callable[..., FakeWorld], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = world(answers("done"))
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    await (await CodexIntelligence().start(request(tmp_path, path_directories=[tmp_path / "shim"]))).result()
+
+    [config] = fake.configs
+    assert config is not None
+    assert config.env == {"PATH": f"{tmp_path / 'shim'}{os.pathsep}/usr/bin"}
 
 
 async def test_without_a_workspace_the_agent_works_in_the_state_directory_and_no_effort_sends_none(

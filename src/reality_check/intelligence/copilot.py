@@ -6,6 +6,7 @@ import contextlib
 from datetime import UTC
 from importlib.metadata import version
 import json
+import os
 import shutil
 import subprocess
 from typing import Any
@@ -36,6 +37,7 @@ from copilot.session_events import (
 )
 
 from reality_check.intelligence.events import EventLog, fresh_input
+from reality_check.intelligence.interface import agent_path
 from reality_check.intelligence.schemas import (
     AgentEvent,
     AgentEventKind,
@@ -331,7 +333,10 @@ class CopilotIntelligence:
     async def start(self, request: AgentRequest) -> CopilotRun:
         token = await asyncio.to_thread(self._github_token)
         working_directory = str(request.workspace.path) if request.workspace is not None else None
-        client = CopilotClient(working_directory=working_directory, github_token=token)
+        path = agent_path(request)
+        # A given environment is the runtime's whole environment, not one merged over this process's.
+        environment = None if path is None else {**os.environ, "PATH": path}
+        client = CopilotClient(working_directory=working_directory, github_token=token, env=environment)
         try:
             await client.start()
             # From the run's own client, so the account's models are known without starting another runtime.

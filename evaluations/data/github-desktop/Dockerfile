@@ -1,33 +1,8 @@
-# The common developer machine of evaluations/environment/Dockerfile, with a Linux desktop session and GitHub
-# Desktop on it, set up the way its user left it: a notes-app repository with changes in progress.
-# The steps up to the user are a copy of the common Dockerfile: a Dockerfile cannot build FROM another one that
-# needs the universe's CA context, and a Compose service built only to be a base would be a universe service too.
-FROM docker:29-dind AS dind
-
-FROM ubuntu:24.04
+# The developer machine of evaluations/environment/Dockerfile with a Linux desktop session and GitHub Desktop on it,
+# set up the way its user left it: a notes-app repository with changes in progress.
+FROM reality-check-evaluation-machine:eval
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git gnupg python3 sudo \
-    && install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
-    && echo "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
-        > /etc/apt/sources.list.d/docker.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        containerd.io docker-buildx-plugin docker-ce docker-ce-cli docker-compose-plugin iptables \
-    && rm -rf /var/lib/apt/lists/*
-# Moves the container's processes out of the root cgroup so a nested dockerd can delegate cgroup v2 controllers.
-COPY --from=dind /usr/local/bin/dind /usr/local/bin/dind
-COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /uvx /usr/local/bin/
-
-# The universe's certificate authority, provided by `launch` as the `dtu-ca` build context, so installs from
-# github.com URLs the gateway answers for are trusted.
-COPY --from=dtu-ca ca.crt /usr/local/share/ca-certificates/digital-twin-universe.crt
-RUN update-ca-certificates
-
-RUN useradd -m -s /bin/bash -G docker,sudo user \
-    && echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/user \
-    && chmod 0440 /etc/sudoers.d/user
+USER root
 
 # The desktop session, with the AT-SPI accessibility bus that computer use reads windows through.
 RUN apt-get update \
@@ -65,6 +40,3 @@ RUN if [ "$SEED_BUG" = 1 ]; then bash /tmp/seed-discard-bug.sh; fi \
     && rm /tmp/seed-discard-bug.sh /tmp/make-repo.sh /tmp/ghd-profile.zip
 
 USER user
-WORKDIR /home/user/project
-# The nested daemon's data cannot live on the container's own overlay filesystem.
-VOLUME /var/lib/docker

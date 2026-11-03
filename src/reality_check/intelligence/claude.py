@@ -36,7 +36,7 @@ from claude_agent_sdk import (
 )
 
 from reality_check.intelligence.events import EventLog
-from reality_check.intelligence.interface import state_directory
+from reality_check.intelligence.interface import agent_path, state_directory
 from reality_check.intelligence.schemas import (
     IMAGE_MEDIA_TYPES,
     AgentEvent,
@@ -425,6 +425,8 @@ def claude_options(request: AgentRequest) -> ClaudeAgentOptions:
         setting_sources=[],
         env=dict(TELEMETRY_OFF),
     )
+    if (path := agent_path(request)) is not None:
+        options.env["PATH"] = path
     if request.session_directory is not None:
         options.session_store = FolderSessionStore(request.session_directory)
         options.session_store_flush = "eager"

@@ -12,9 +12,9 @@ x-dtu:
 services:
   twin:
     build:
-      context: ../../../data/github-desktop
+      context: ../../../environment/twin
       args:
-        SEED_BUG: "0"
+        BASE: reality-check-evaluation-github-desktop:eval
     # A nested daemon has no unprivileged path. This weakens the container boundary, and is this profile's
     # decision to make: the twin runs only what an evaluation runs.
     privileged: true

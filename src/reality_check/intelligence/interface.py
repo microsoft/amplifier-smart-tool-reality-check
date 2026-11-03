@@ -147,6 +147,15 @@ def state_directory(agent_provider: AgentProvider) -> Path:
     return base / DISTRIBUTION / agent_provider
 
 
+def agent_path(request: AgentRequest) -> str | None:
+    """The PATH the agent runs with: the request's path directories ahead of this process's; None to leave it be."""
+    if not request.path_directories:
+        return None
+    directories = [str(directory) for directory in request.path_directories]
+    inherited = os.environ.get("PATH")
+    return os.pathsep.join([*directories, inherited] if inherited else directories)
+
+
 def _install_source(extra: str) -> str:
     url = repository_url()
     return f'"{DISTRIBUTION}[{extra}] @ git+{url}"' if url else f'"{DISTRIBUTION}[{extra}]"'

@@ -3,6 +3,7 @@
 import asyncio
 import base64
 from collections.abc import AsyncIterable, AsyncIterator, Callable
+import os
 from pathlib import Path
 from typing import Any
 
@@ -246,6 +247,19 @@ async def test_a_run_gets_the_workspace_and_its_options_with_telemetry_and_setti
     assert fake.calls == ["connect"]
     assert fake.interrupted == 0
     assert fake.disconnected == 1
+
+
+async def test_path_directories_go_first_on_claude_code_s_path_beside_telemetry_off(
+    world: Callable[..., FakeWorld], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = world(answers("done"))
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    await (await ClaudeIntelligence().start(request(path_directories=[tmp_path / "shim", tmp_path / "uv"]))).result()
+
+    [options] = fake.options
+    path = os.pathsep.join([str(tmp_path / "shim"), str(tmp_path / "uv"), "/usr/bin"])
+    assert options.env == {**TELEMETRY_OFF, "PATH": path}
 
 
 async def test_without_a_workspace_or_effort_a_run_works_in_the_scratch_directory_and_sends_no_effort(

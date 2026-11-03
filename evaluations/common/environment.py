@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import secrets
@@ -17,6 +18,8 @@ from common.context import EvaluationError, RunContext
 from digital_twin_universe import lib as dtu
 from digital_twin_universe.schemas import ExecResult
 
+EVALUATIONS = Path(__file__).resolve().parents[1]
+MACHINE_IMAGE = "reality-check-evaluation-machine:eval"
 HOME = "/home/user"
 PROJECT = f"{HOME}/project"
 # The evaluation's own files in the twin, made only once the capability has finished.
@@ -28,6 +31,28 @@ LAUNCH_TIMEOUT_SECONDS = 1200
 EXPORT_MAX_BYTES = 8 * 1024**3
 EXPORT_TIMEOUT_SECONDS = 1800
 CAPTURE_MAX_BYTES = 16 * 1024**2
+
+
+@dataclass(frozen=True)
+class Machine:
+    """A task's own machine image, built FROM the common machine on the host before its twin builds FROM it."""
+
+    tag: str
+    context: Path
+    build_args: dict[str, str] = field(default_factory=dict)
+
+
+# The desktop tasks' machine, with GitHub Desktop as released or with the discard defect seeded into it.
+GITHUB_DESKTOP = Machine(
+    tag="reality-check-evaluation-github-desktop:eval",
+    context=EVALUATIONS / "data" / "github-desktop",
+    build_args={"SEED_BUG": "0"},
+)
+GITHUB_DESKTOP_SEEDED = Machine(
+    tag="reality-check-evaluation-github-desktop-seeded:eval",
+    context=EVALUATIONS / "data" / "github-desktop",
+    build_args={"SEED_BUG": "1"},
+)
 
 
 class Environment:
@@ -187,8 +212,10 @@ class Environment:
 
 
 @contextmanager
-def launch(context: RunContext, profile: Path) -> Iterator[Environment]:
-    """A new environment from `profile`, destroyed on exit unless the run keeps it."""
+def launch(context: RunContext, profile: Path, machine: Machine | None = None) -> Iterator[Environment]:
+    """A new environment from `profile`, on the common machine or `machine`, destroyed on exit unless the run keeps it."""
+    with context.step("machine"):
+        build_machines(context, machine)
     with context.step("launch"):
         environment = Environment.start(profile, context.logs)
     context.live.add(environment)
@@ -203,6 +230,43 @@ def launch(context: RunContext, profile: Path) -> Iterator[Environment]:
             except Exception as error:
                 context.record.error = (context.record.error or "") + f" Destroying {environment.id} failed: {error}"
             context.live.remove(environment)
+
+
+def build_machines(context: RunContext, machine: Machine | None = None) -> None:
+    """Build the common machine, then `machine` FROM it, with the host's Docker; the output is in `machine-build.log`.
+
+    They are built here rather than in the universe so that they are cached across runs: everything a twin's build
+    does after adding the universe's certificate authority, which is new for each universe, is built again.
+    """
+    _require_docker_driver()
+    builds = [(MACHINE_IMAGE, EVALUATIONS / "environment", {})]
+    if machine is not None:
+        builds.append((machine.tag, machine.context, machine.build_args))
+    log = context.logs / "machine-build.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("w", encoding="utf-8") as output:
+        for tag, directory, build_args in builds:
+            arguments = [part for name, value in build_args.items() for part in ("--build-arg", f"{name}={value}")]
+            output.write(f"$ docker build --tag {tag} {' '.join(arguments)} {directory}\n")
+            output.flush()
+            built = subprocess.run(
+                ["docker", "build", "--tag", tag, *arguments, str(directory)], stdout=output, stderr=subprocess.STDOUT
+            )
+            if built.returncode != 0:
+                raise EvaluationError(f"Building {tag} failed; see {log}.")
+
+
+def _require_docker_driver() -> None:
+    """Fail unless Buildx's builder is the `docker` driver, the only one whose builds see the host's images."""
+    inspected = subprocess.run(["docker", "buildx", "inspect"], capture_output=True, text=True)
+    driver = next(
+        (line.split(":", 1)[1].strip() for line in inspected.stdout.splitlines() if line.startswith("Driver:")), None
+    )
+    if driver != "docker":
+        raise EvaluationError(
+            f"The Buildx builder uses the {driver or 'unknown'} driver, whose builds cannot see the machine images "
+            "built on this host. Switch to the default builder with `docker buildx use default`."
+        )
 
 
 def destroy_leftovers() -> list[str]:

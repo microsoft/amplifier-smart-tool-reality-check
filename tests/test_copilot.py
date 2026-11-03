@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -125,9 +126,11 @@ class FakeWorld:
         self.aborted = 0
         self.stopped = 0
         self.failure: Exception | None = None
+        self.environments: list[dict[str, str] | None] = []
 
-    def client(self, working_directory: str | None, github_token: str) -> Any:
+    def client(self, working_directory: str | None, github_token: str, env: dict[str, str] | None) -> Any:
         world = self
+        self.environments.append(env)
 
         class Client:
             async def start(self) -> None:
@@ -218,6 +221,22 @@ async def test_a_session_gets_the_workspace_mcp_servers_and_skills_and_keeps_the
         }
     }
     assert fake.stopped == 1
+    assert fake.environments == [None]
+
+
+async def test_path_directories_go_first_on_the_runtime_s_path_in_this_process_s_environment(
+    world: Callable[..., FakeWorld], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = world(answers("done"))
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("KEPT", "1")
+
+    await (await CopilotIntelligence().start(request(path_directories=[tmp_path / "shim"]))).result()
+
+    [environment] = fake.environments
+    assert environment is not None
+    assert environment["PATH"] == f"{tmp_path / 'shim'}{os.pathsep}/usr/bin"
+    assert environment["KEPT"] == "1"
 
 
 async def test_sdk_events_become_agent_events_ending_in_one_terminal(world: Callable[..., FakeWorld]) -> None:

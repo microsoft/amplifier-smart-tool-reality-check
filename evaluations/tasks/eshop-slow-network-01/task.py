@@ -14,6 +14,7 @@ from common.context import Criterion, EvaluationError, RunContext
 from common.environment import PROJECT, WORK, Environment
 
 TASK = Path(__file__).resolve().parent
+MACHINE = environment.Machine(tag="reality-check-evaluation-eshop-slow-network-01:eval", context=TASK / "machine")
 CACHE = TASK / ".cache"
 PATCH = TASK / "patches" / "order-summary.patch"
 ESHOP_REPOSITORY = "https://github.com/dotnet/eShop"
@@ -66,8 +67,8 @@ DESCRIPTION = (
     "and the basket emptied, a repeat of the same submit places a second order. Place order is never disabled, as in "
     "upstream, so on a slow network a second click 0.5 to 1.5 seconds after the first places the order twice, while "
     "a single click on any network places it once. The source is in the user's project as a repository of one "
-    "commit, with nothing installed or built: the agent installs the .NET 10 SDK, runs the AppHost on the twin's "
-    "Docker, finds the seeded customers' sign-in itself, and must slow its own network to see the defect."
+    "commit, on a machine with the .NET SDK and the Aspire CLI the project selects, but nothing built: the agent "
+    "runs the AppHost on the twin's Docker, finds the seeded customers' sign-in itself, and must slow its own network to see the defect."
 )
 # Installed is the trigger tasks' own evaluation of whether an agent chooses reality-check.
 CAPABILITIES = ("reality-check", "baseline")
@@ -118,7 +119,7 @@ RUBRIC = {
 def run(context: RunContext) -> None:
     with context.step("build"):
         checkout = _checkout()
-    with environment.launch(context, TASK / "environment") as env:
+    with environment.launch(context, TASK / "environment", MACHINE) as env:
         with context.step("setup"):
             install.setup(env, context)
         with context.step("place"):
