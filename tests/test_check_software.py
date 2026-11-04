@@ -277,6 +277,31 @@ async def test_resume_continues_the_session_on_the_same_agent_provider(tmp_path:
     assert f"`../{first.check_id}/evidence/01-open-home.png`" in request.initial_message
 
 
+async def test_a_new_check_is_told_the_newest_checks_and_their_requests_and_a_resumed_one_is_not(
+    tmp_path: Path,
+) -> None:
+    earlier: list[lib.CheckRun] = []
+    for number in range(check.MAX_RECENT_CHECKS + 1):
+        run = await lib.check_software(
+            f"Check\nstep {number}", checks_directory=tmp_path, intelligence=FakeIntelligence(finishes())
+        )
+        await run.result()
+        earlier.append(run)
+    fresh = FakeIntelligence(finishes())
+    resumed = FakeIntelligence(finishes())
+
+    await (await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=fresh)).result()
+    await (
+        await lib.check_software("Go on.", resume=earlier[-1].check_id, checks_directory=tmp_path, intelligence=resumed)
+    ).result()
+
+    newest = [f"- `{run.directory}` (done): Check step {number}" for number, run in enumerate(earlier)][1:]
+    prompt = fresh.runs[0].request.initial_message
+    assert "\n".join(reversed(newest)) in prompt
+    assert str(earlier[0].directory) not in prompt
+    assert str(earlier[1].directory) not in resumed.runs[0].request.initial_message
+
+
 async def test_a_check_past_its_timeout_fails_with_the_result_so_far(tmp_path: Path) -> None:
     run = await lib.check_software(
         REQUEST, checks_directory=tmp_path, timeout_seconds=1, intelligence=FakeIntelligence(works_forever)
@@ -517,7 +542,7 @@ async def test_a_model_or_effort_reality_check_does_not_run_fails_before_the_che
         assert "list-intelligence-models" in failure.value.remedy
 
 
-async def test_a_model_that_takes_no_effort_is_sent_none_and_the_default_model_high(
+async def test_a_model_that_takes_no_effort_is_sent_none_and_the_default_model_medium(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     made = without_fake_resolution(monkeypatch)
@@ -527,8 +552,8 @@ async def test_a_model_that_takes_no_effort_is_sent_none_and_the_default_model_h
     await auto.result()
     await default.result()
 
-    assert [fake.runs[0].request.reasoning_effort for fake in made] == [None, "high"]
-    assert (record_of(auto).reasoning_effort, record_of(default).reasoning_effort) == (None, "high")
+    assert [fake.runs[0].request.reasoning_effort for fake in made] == [None, "medium"]
+    assert (record_of(auto).reasoning_effort, record_of(default).reasoning_effort) == (None, "medium")
 
 
 async def test_an_injected_intelligence_runs_any_model(tmp_path: Path) -> None:

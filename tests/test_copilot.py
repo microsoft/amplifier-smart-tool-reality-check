@@ -483,10 +483,39 @@ async def test_the_session_directory_is_the_config_directory_on_create_and_resum
 
     created, resumed = fake.options
     assert created["config_directory"] == str(tmp_path / "session")
-    assert created["reasoning_effort"] == "high"
+    assert created["reasoning_effort"] == "medium"
     assert resumed["config_directory"] == str(tmp_path / "again")
     assert "reasoning_effort" not in resumed
     assert fake.resumed == [SESSION]
+
+
+async def test_a_copilot_fusion_tier_runs_on_auto_with_its_tier_and_flags_on_create_and_resume_and_sees_images(
+    world: Callable[..., FakeWorld], tmp_path: Path
+) -> None:
+    fake = world(answers("one"), answers("two"))
+    shot = tmp_path / "shot.png"
+    shot.write_bytes(b"\x89PNG\r\n\x1a\n")
+    fusion = {"reasoning_effort": None, "images": [shot]}
+
+    await (await CopilotIntelligence().start(request().model_copy(update={"model": "hydrafusion", **fusion}))).result()
+    await (
+        await CopilotIntelligence().start(
+            request(resume=SESSION).model_copy(update={"model": "hydrafusion-max", **fusion})
+        )
+    ).result()
+
+    created, resumed = fake.options
+    assert (created["model"], created["capi"], created["feature_flags"]) == (
+        "auto",
+        {"auto_tier": "hydrafusion"},
+        {"DYNAMIC_AUTO_TIERS": True},
+    )
+    assert (resumed["model"], resumed["capi"], resumed["feature_flags"]) == (
+        "auto",
+        {"auto_tier": "hydrafusion-max"},
+        {"DYNAMIC_AUTO_TIERS": True, "HYDRAFUSION_PLAN_V2": True},
+    )
+    assert "reasoning_effort" not in created
 
 
 @pytest.mark.parametrize(
@@ -495,6 +524,7 @@ async def test_the_session_directory_is_the_config_directory_on_create_and_resum
         ({"model": "gemini-4-argon"}, "model-not-available"),
         ({"reasoning_effort": "none"}, "bad-reasoning-effort"),
         ({"model": "auto", "reasoning_effort": "low"}, "bad-reasoning-effort"),
+        ({"model": "balance", "reasoning_effort": "low"}, "bad-reasoning-effort"),
         ({"model": "auto", "reasoning_effort": None, "images": [Path("shot.png")]}, "model-without-vision"),
     ],
 )

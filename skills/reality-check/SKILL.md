@@ -2,7 +2,7 @@
 name: reality-check
 description: >-
   Checks that an app works the way a real user would experience it and returns evidence for every finding. Drive it from the command line as `reality-check`, or from Python through `reality_check.lib`.
-  Use whenever a fix or capability needs to be validated: after you fix a bug, or build or change a feature, run reality-check before you report the work as done, so the report says what a user can actually do, not only what the code or tests suggest.
+  Use whenever a fix or capability needs to be validated: once you have fixed a bug, or built or changed a feature, run a check of what changed before you report the work as done, so the report says what a user can actually do, not only what the code or tests suggest.
   Also use when asked to check, verify, or make sure an app works, and when the user mentions "reality check" directly.
 license: MIT
 metadata:
@@ -17,13 +17,13 @@ Checks that an app works the way a real user would experience it, on your machin
 
 ```bash
 # as a CLI, choosing the agent provider(s) you want
-uv tool install "reality-check[all | copilot | amplifier-agent | codex | claude] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
+uv tool install "reality-check[all | copilot | amplifier-agent | codex | claude] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.0"
 
 # as a library, from another project
-uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
+uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.0"
 
 # once, without installing
-uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1" reality-check --help
+uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.0" reality-check --help
 
 # once, to give checks everything they can use
 reality-check install
@@ -39,6 +39,7 @@ Read each capability's own skill with `reality-check <command> --help` before ca
 it carries the arguments, a worked invocation, the result, etc.
 The main smart capability is `reality-check check-software --request "Check that a new user can sign up and send a message"`,
 which uses an Agent SDK like Copilot SDK or Amplifier Agent to validate software.
+Checks take at least a few minutes, with more complex or generic asks possibly taking much longer. `reality-check check-software --help` has the details.
 
 To show the user their checks, call the MCP tool `open_app` with the check's ID.
 Hosts that render MCP Apps show it inline; the rest get a URL to give the user as a browser view.

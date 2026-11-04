@@ -15,7 +15,9 @@ Before the first command, learn it from the CLI itself; it describes the version
     agent-browser skills get dogfood     # for exploratory checks
 
 - Pass the session from your prompt on every command: `--session <session>`. For a second
-  browser, such as another user's, use `--session <session>-<role>`.
+  browser, such as another user's, use `--session <session>-<role>`. Flows that run in parallel,
+  in scripts or sub-agents, each take their own, such as `--session <session>-2`, so their pages
+  and cookies do not clash.
 - Save screenshots into the evidence folder by path.
 - This machine's trusted certificates are already handed to the browser. Do not turn off HTTPS
   checks.

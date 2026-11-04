@@ -61,6 +61,11 @@ def list_checks(checks_directory: Path | None = None) -> list[CheckSummary]:
     return sorted(summaries, key=lambda summary: summary.started_at, reverse=True)
 
 
+def newest_records(checks_directory: Path, count: int) -> list[CheckRecord]:
+    """The newest `count` checks' records in `checks_directory`, newest first, read without the project registry."""
+    return sorted(_records(checks_directory), key=lambda record: record.started_at, reverse=True)[:count]
+
+
 def read_check(check_id: str, checks_directory: Path) -> CheckDetail:
     """One check as it stands: its record, its report with portable evidence links, and the evidence it has so far."""
     root = checks_directory.resolve()

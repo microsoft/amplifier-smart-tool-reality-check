@@ -91,6 +91,13 @@ NAMED_FILES = Template("\nThe request names these files:\n\n$files\n")
 # $previous_checks in prompt.md and resume-prompt.md
 PREVIOUS_CHECKS = Template("\nEarlier checks are in these directories:\n\n$directories\n")
 
+# $recent_checks in prompt.md
+RECENT_CHECKS = Template(
+    "\nThe newest checks in this project, newest first, by directory, state, and request. When one asked for "
+    "something like this request, start from it: read its report, and run again or adapt the scripts it kept in its "
+    "evidence folder. Move anything you need to change or will make state changes into your own working directory.\n\n$checks\n"
+)
+
 # $target in prompt.md, when no target is given
 TARGET_FROM_REQUEST = "where the request says"
 
