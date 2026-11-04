@@ -15,7 +15,7 @@ DEFAULT_INTELLIGENCE_MODELS: dict[AgentProvider, str] = {
     "codex": "gpt-6.1-sol",
     "claude": "claude-opus-5-5",
 }
-DEFAULT_INTELLIGENCE_REASONING_EFFORT: ReasoningEffort = "high"
+DEFAULT_INTELLIGENCE_REASONING_EFFORT: ReasoningEffort = "medium"
 # Who started or steered a check when the caller does not say; the tool cannot know, so it never guesses.
 DEFAULT_ORIGIN = "unknown"
 
@@ -99,6 +99,9 @@ INTELLIGENCE_MODELS: tuple[IntelligenceModel, ...] = (
         agent_provider="copilot", id="gpt-6.1-sol", label="GPT-6.1 Sol", reasoning_efforts=ALL_EFFORTS, vision=True
     ),
     IntelligenceModel(
+        agent_provider="copilot", id="gpt-6.1-terra", label="GPT-6.1 Terra", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
         agent_provider="copilot", id="gpt-6-astra", label="GPT-6 Astra", reasoning_efforts=ALL_EFFORTS, vision=True
     ),
     IntelligenceModel(
@@ -119,6 +122,15 @@ INTELLIGENCE_MODELS: tuple[IntelligenceModel, ...] = (
         vision=True,
     ),
     IntelligenceModel(agent_provider="copilot", id="auto", label="Auto", reasoning_efforts=[], vision=False),
+    IntelligenceModel(
+        agent_provider="copilot", id="balance", label="Copilot Fusion Standard", reasoning_efforts=[], vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="copilot", id="hydrafusion", label="Copilot Fusion High", reasoning_efforts=[], vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="copilot", id="hydrafusion-max", label="Copilot Fusion Max", reasoning_efforts=[], vision=True
+    ),
     IntelligenceModel(
         agent_provider="amplifier-agent",
         id="openai/gpt-6.1-sol",
@@ -149,6 +161,9 @@ INTELLIGENCE_MODELS: tuple[IntelligenceModel, ...] = (
     ),
     IntelligenceModel(
         agent_provider="codex", id="gpt-6.1-sol", label="GPT-6.1 Sol", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="codex", id="gpt-6.1-terra", label="GPT-6.1 Terra", reasoning_efforts=ALL_EFFORTS, vision=True
     ),
     IntelligenceModel(
         agent_provider="codex", id="gpt-6-astra", label="GPT-6 Astra", reasoning_efforts=ALL_EFFORTS, vision=True

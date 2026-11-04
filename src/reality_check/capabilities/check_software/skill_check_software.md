@@ -46,6 +46,32 @@ result.status, result.report, result.next
 Desktop apps need computer use. When it is not installed, the check's agent installs it with
 `reality-check install --component computer-use` and goes on; when the install fails, the agent says why.
 
+## Managing Quality and Speed/Cost of Checks
+
+Checks take at least a few minutes, with more complex or generic asks possibly taking much longer. Here are some suggestions to optimize your usage:
+
+- Check once a major change is done. Skip minor refactors, small adjustments to features, tweaks that are obvious, etc.
+- Name in the check request what changed and what a user does with it. A broad request such as "validate my app" is fine when the user wants it, and takes much longer.
+- Start checks that do not depend on each other at the same time, and follow each one:
+
+  ```bash
+  reality-check check-software --request "Check the new export button on /reports" \
+    --target http://localhost:3000 --detach --origin claude-code:<session id>
+  reality-check check-software --request "Check that a new user gets the welcome page after sign-up" \
+    --target http://localhost:3000 --detach --origin claude-code:<session id>
+  ```
+- Set the app up once for many checks: `--keep-running` on the first, then what it left running as the `--target` of the next ones.
+- After a fix, recheck with `--resume`: the agent already knows the app and runs its scripts again.
+- When a check runs longer than it should, steer it to finish:
+  `reality-check steer-check --check-id <check id> --message "Finish up and report what you checked"`.
+- The model and reasoning effort are a way to trade off quality for time and cost. A faster model or a lower
+  effort suits a narrow check, such as `gpt-6.1-terra` rather than `gpt-6.1-sol`,
+  `claude-sonnet-5-5` rather than `claude-opus-5-5`, or `--reasoning-effort low`.
+  On copilot, `balance`, `hydrafusion`, and `hydrafusion-max` run Copilot Fusion Standard, High, and
+  Max, which pick the models for each turn and whether others review it; they take no reasoning
+  effort. High and Max need a Copilot Pro+, Max, Business, or Enterprise plan.
+  `reality-check list-intelligence-models` lists the IDs each agent provider takes.
+
 ## Arguments
 
 - `--request TEXT`: what to check, in plain words. Required. It may name files, read relative to
@@ -69,7 +95,7 @@ Desktop apps need computer use. When it is not installed, the check's agent inst
   `copilot` first; on `--resume`, the resumed check's.
 - `--model MODEL`: the agent provider's default when omitted. Only the models
   `reality-check list-intelligence-models` lists run.
-- `--reasoning-effort low|medium|high|xhigh|max`: `high` when omitted, and none for a model that
+- `--reasoning-effort low|medium|high|xhigh|max`: `medium` when omitted, and none for a model that
   takes none, such as `auto`.
 - `--timeout-seconds N`: how long the check may run, default 3600; `0` for no limit. Be generous:
   testing is slow, and a check stopped early often has no report. Give about an hour for a focused

@@ -19,7 +19,7 @@ async def check_software(
     checks_directory: Path = DEFAULT_CHECKS_DIRECTORY,  # where checks are kept; .agents/reality-check, relative to the working directory
     agent_provider: AgentProvider | None = None,  # copilot, amplifier-agent, codex, or claude; when None, the resumed check's, else the first installed, copilot first
     model: str | None = None,         # the agent provider's default in DEFAULT_INTELLIGENCE_MODELS when None; one of INTELLIGENCE_MODELS
-    reasoning_effort: ReasoningEffort | None = None,  # high when None, and none sent for a model that takes none
+    reasoning_effort: ReasoningEffort | None = None,  # medium when None, and none sent for a model that takes none
     timeout_seconds: int | None = DEFAULT_TIMEOUT_SECONDS,  # 3600; None for no limit; see below
     images: list[Path] | None = None, # images shown to the agent with the request; copied into the check
     origin: str = DEFAULT_ORIGIN,     # who starts the check, such as "app" or "claude-code:<session id>"; "unknown" by default
@@ -27,6 +27,8 @@ async def check_software(
     intelligence: Intelligence | None = None,
 ) -> CheckRun
 ```
+
+A new check's agent also gets the newest checks in `checks_directory`, each with its state and the start of its request, so it can start from one that asked for something similar.
 
 Without an injected `intelligence`, a model not in `INTELLIGENCE_MODELS`, an effort it does not take, or images for a model without vision raise at once, before the check exists. When the agent starts, the agent provider's own client checks the same against the account, so a model the account does not have fails the check instead of running another.
 
@@ -349,4 +351,4 @@ def version() -> str
 
 A capability's code goes in `reality_check/capabilities/<name>/`, with its prompts, templates, and its own `skill_<capability>.md` beside it, named on its row in `core/skill.py` `CAPABILITIES`, and `lib.py` gets a facade function that imports it and is the only caller of it.
 Each capability of the library gets a section here: what it does and when to reach for it, the signature `lib.py` exposes, what each argument means, and what it returns or raises.
-Model-backed capabilities say so, and take `agent_provider`, `model`, `reasoning_effort`, and `intelligence`. `model` defaults to the agent provider's entry in `DEFAULT_INTELLIGENCE_MODELS` and `reasoning_effort` to `high`, both from `reality_check.schemas`.
+Model-backed capabilities say so, and take `agent_provider`, `model`, `reasoning_effort`, and `intelligence`. `model` defaults to the agent provider's entry in `DEFAULT_INTELLIGENCE_MODELS` and `reasoning_effort` to `medium`, both from `reality_check.schemas`.

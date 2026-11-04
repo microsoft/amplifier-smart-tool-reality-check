@@ -57,6 +57,13 @@ from reality_check.schemas import ALL_EFFORTS, RealityCheckError
 # How long an aborted turn may take to go idle before the run stops waiting for it.
 DRAIN_SECONDS = 30
 NANO = 1e9
+AUTO_MODEL = "auto"
+# Copilot Fusion runs as a tier of the `auto` model, behind feature flags the runtime keeps off unless asked.
+FUSION_FEATURE_FLAGS: dict[str, dict[str, bool]] = {
+    "balance": {"DYNAMIC_AUTO_TIERS": True},
+    "hydrafusion": {"DYNAMIC_AUTO_TIERS": True},
+    "hydrafusion-max": {"DYNAMIC_AUTO_TIERS": True, "HYDRAFUSION_PLAN_V2": True},
+}
 
 
 class CopilotRun:
@@ -206,13 +213,18 @@ class CopilotRun:
 
     def _session_options(self) -> dict[str, Any]:
         request = self._request
+        fusion = FUSION_FEATURE_FLAGS.get(request.model)
         options: dict[str, Any] = {
-            "model": request.model,
+            "model": request.model if fusion is None else AUTO_MODEL,
             "on_permission_request": PermissionHandler.approve_all,
             "skip_custom_instructions": True,
             "enable_session_telemetry": False,
             "on_event": self._on_event,
         }
+        if fusion is not None:
+            # The SDK types the tier as an enum, but sends the payload through plain json, which takes only the string.
+            options["capi"] = {"auto_tier": request.model}
+            options["feature_flags"] = fusion
         if request.reasoning_effort is not None:
             options["reasoning_effort"] = request.reasoning_effort
         if request.session_directory is not None:
@@ -382,7 +394,9 @@ def copilot_model_problem(models: list[ModelInfo], request: AgentRequest) -> Rea
 
     The runtime runs another model in place of one it does not know, without saying so.
     """
-    model = next((candidate for candidate in models if candidate.id == request.model), None)
+    fusion = request.model in FUSION_FEATURE_FLAGS
+    listed = AUTO_MODEL if fusion else request.model
+    model = next((candidate for candidate in models if candidate.id == listed), None)
     if model is None:
         return RealityCheckError(
             code="model-not-available",
@@ -400,7 +414,8 @@ def copilot_model_problem(models: list[ModelInfo], request: AgentRequest) -> Rea
             f"it {takes}.",
             remedy="Pass one it takes, or leave the reasoning effort out for its default.",
         )
-    if request.images and not model.capabilities.supports.vision:
+    # The runtime lists no vision for `auto`, yet its Fusion tiers are shown images.
+    if request.images and not fusion and not model.capabilities.supports.vision:
         return RealityCheckError(
             code="model-without-vision",
             message=f"{request.model} on Copilot cannot be shown images.",

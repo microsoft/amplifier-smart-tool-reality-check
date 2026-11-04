@@ -25,6 +25,7 @@ import yaml
 from reality_check.capabilities.browser.prepare import Browser, prepare_browser
 from reality_check.capabilities.browser.prepare import NotInstalled as BrowserNotInstalled
 from reality_check.capabilities.browser.target import Unavailable as BrowserUnavailable
+from reality_check.capabilities.check_software.checks import newest_records
 from reality_check.capabilities.check_software.constants import (
     ASK_FIRST,
     BROWSER_ENABLED,
@@ -41,6 +42,7 @@ from reality_check.capabilities.check_software.constants import (
     NAMED_FILES,
     NO_ACCESSIBILITY_TREE,
     PREVIOUS_CHECKS,
+    RECENT_CHECKS,
     TARGET_FROM_REQUEST,
     UV_MISSING,
     WRAP_UP,
@@ -101,6 +103,9 @@ AGENT_TIMEOUT_GRACE_SECONDS = 60
 WRAP_UP_FRACTION = 0.85
 WRAP_UP_ORIGIN = "reality-check"
 MAX_NAMED_FILES = 20
+MAX_RECENT_CHECKS = 5
+# Enough of a request to tell whether it asked for the same thing; the whole of it is in the check's directory.
+MAX_RECENT_REQUEST_CHARACTERS = 200
 # What starts a detached check, given its request on stdin. Tests swap it for a command that fakes the agent.
 BACKGROUND_COMMAND = [sys.executable, "-m", "reality_check.capabilities.check_software.background"]
 IMAGES = "images"
@@ -679,6 +684,7 @@ async def _start(
         effort = require_allowed(provider, model, reasoning_effort, sources)
     intelligence.preflight()
 
+    recent = await asyncio.to_thread(newest_records, root, MAX_RECENT_CHECKS) if resumed is None else []
     check_id, directory = _new_check_directory(root)
     copied = _copy_images(directory, sources)
     session_directory: Path | None = directory / SESSION
@@ -720,7 +726,7 @@ async def _start(
         )
     else:
         prompt = _prompt(
-            request, target, directory, previous, ask_first, keep_running, computer_use, browser, uv is not None
+            request, target, directory, previous, recent, ask_first, keep_running, computer_use, browser, uv is not None
         )
     agent_request = AgentRequest(
         initial_message=prompt,
@@ -1048,6 +1054,7 @@ def _prompt(
     target: str | None,
     directory: Path,
     previous_checks: list[Path],
+    recent_checks: list[CheckRecord],
     ask_first: AskFirst,
     keep_running: bool,
     computer_use: ComputerUse | NotInstalled | Unavailable,
@@ -1062,6 +1069,7 @@ def _prompt(
         named_files=named,
         evidence=_evidence_text(directory),
         previous_checks=_previous_checks_text(previous_checks),
+        recent_checks=_recent_checks_text(directory.parent, recent_checks),
         computer_use=_computer_use_text(computer_use),
         browser=_browser_text(browser),
         ask_first=ASK_FIRST[ask_first],
@@ -1123,6 +1131,18 @@ def _browser_text(browser: Browser | BrowserNotInstalled | BrowserUnavailable) -
 
 def _previous_checks_text(previous_checks: list[Path]) -> str:
     return PREVIOUS_CHECKS.substitute(directories=_listed(previous_checks)) if previous_checks else ""
+
+
+def _recent_checks_text(root: Path, recent_checks: list[CheckRecord]) -> str:
+    if not recent_checks:
+        return ""
+    lines = []
+    for record in recent_checks:
+        request = " ".join(record.request.split())
+        if len(request) > MAX_RECENT_REQUEST_CHARACTERS:
+            request = f"{request[:MAX_RECENT_REQUEST_CHARACTERS].rstrip()}..."
+        lines.append(f"- `{root / record.check_id}` ({check_state(record)}): {request}")
+    return RECENT_CHECKS.substitute(checks="\n".join(lines))
 
 
 def _listed(paths: list[Path]) -> str:

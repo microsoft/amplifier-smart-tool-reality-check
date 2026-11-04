@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.7.1
+version: 0.8.0
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do
 use_cases:
@@ -86,13 +86,13 @@ Not for unit tests, load testing, or security testing.
 
 ```bash
 # as a CLI
-uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
+uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.0"
 
 # as a library, from another project
-uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1"
+uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.0"
 
 # once, without installing
-uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.7.1" reality-check --help
+uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.0" reality-check --help
 
 # once, to give checks everything they can use
 reality-check install
@@ -142,6 +142,9 @@ Runs on Linux, macOS, and Windows.
 
 The main capability is `check-software`: it checks software as a user would and ends with a report and its evidence.
 Read `reality-check check-software --help` before starting a check.
+Run one check when a change is done, with a request that names what changed, not one after each edit, and none for a change no user sees.
+A broad request such as "validate my app" works and takes much longer.
+Checks that do not depend on each other should be kicked off in parallel. A faster model or lower reasoning effort trades some quality for time and cost.
 The other capabilities serve it: follow, steer, or cancel a running check, read or list checks, show them to the person in the app, and list the models a check runs on.
 
 ## Choosing a surface
