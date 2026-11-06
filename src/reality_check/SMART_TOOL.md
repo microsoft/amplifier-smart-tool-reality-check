@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.8.0
+version: 0.8.1
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do
 use_cases:
@@ -86,13 +86,13 @@ Not for unit tests, load testing, or security testing.
 
 ```bash
 # as a CLI
-uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.0"
+uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.1"
 
 # as a library, from another project
-uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.0"
+uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.1"
 
 # once, without installing
-uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.0" reality-check --help
+uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.1" reality-check --help
 
 # once, to give checks everything they can use
 reality-check install
