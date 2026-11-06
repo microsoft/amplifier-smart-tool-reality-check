@@ -25,8 +25,10 @@ binary and the skills from its npm package, each checked against its pinned hash
 reality-check's own folder; it changes no PATH, shell profile, or startup task, and agent-browser's
 update check stays off. When no browser launches, it downloads Chrome for Testing into
 `~/.agent-browser/browsers`. On Linux it also installs Chromium's system libraries through sudo when
-sudo needs no password; otherwise the failure names the command that does. Linux on arm64 and
-Alpine have no Chrome for Testing and need the distribution's Chromium. On Linux, without
+sudo needs no password; otherwise the failure names the command that does. On Linux x64 that goes
+through `sudo` even as root, so a root container without `sudo` installs it first, such as
+`apt-get install -y sudo`. Alpine has no Chrome for Testing and needs the distribution's Chromium.
+On Linux, without
 `certutil`, `remaining_step` names the package that makes browsers trust this machine's
 certificates.
 
@@ -126,5 +128,7 @@ not match; nothing is installed), `computer-use-install-failed` (the folder is n
 `computer-use-install-broken` (the install folder is there but does not run). For `browser`:
 `browser-unsupported`, `browser-download-failed` (including Chrome for Testing),
 `browser-download-corrupt`, `browser-install-failed`, `browser-install-broken`,
-`browser-no-browser` (Linux arm64 or musl with no Chromium that launches),
-`browser-missing-system-libraries`, and `browser-launch-failed`.
+`browser-no-browser` (musl Linux with no Chromium that launches),
+`browser-missing-system-libraries`, `browser-daemon-failed` (agent-browser's daemon does not start),
+`browser-socket-directory` (no private short folder for agent-browser's sockets), and
+`browser-launch-failed`.

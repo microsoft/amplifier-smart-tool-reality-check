@@ -1,17 +1,21 @@
 """Install the pinned agent-browser once, and make sure a browser it drives launches."""
 
 import base64
+import contextlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
+from typing import NamedTuple
 
 import platformdirs
 
+from reality_check.capabilities.browser import chrome
 from reality_check.capabilities.browser.target import Target, Unavailable, resolve_target
 from reality_check.capabilities.install.download import Installing, build_in_place, fetch
 from reality_check.core.skill import DISTRIBUTION
@@ -40,6 +44,16 @@ PACKAGE_ROOT = "package/"
 # Only doctor checks on finding and launching a browser decide whether one works; the rest are about other features.
 LAUNCH_CHECKS = ("chrome.", "launch.")
 LAUNCHED = "launch.elapsed"
+# Doctor's own daemon did not start, which no browser download fixes.
+DAEMON_CHECK = "launch.daemon"
+# A Unix socket path holds 104 bytes with its terminating null, and agent-browser refuses a longer one.
+SOCKET_PATH_BYTES = 103
+# doctor's `doctor-<pid>-<epoch ms>` is at most 28 bytes and a check's `rc-<check_id>` 25, which leaves a check's
+# `-<role>` sessions 23.
+SESSION_BYTES = 48
+SOCKET_SUFFIX = ".sock"
+# /tmp rather than $TMPDIR, which on macOS is itself about 50 bytes.
+SHORT_SOCKET_DIRECTORY = "/tmp/rc-ab-{uid}"
 VERSION_TIMEOUT_SECONDS = 15
 DOCTOR_TIMEOUT_SECONDS = 90
 BROWSER_TIMEOUT_SECONDS = 600
@@ -64,6 +78,9 @@ def install_browser() -> BrowserInstall:
         _download(target)
     failures = launch_failures(executable)
     if failures:
+        daemon = [failure.message for failure in failures if failure.check == DAEMON_CHECK]
+        if daemon:
+            raise _daemon_failed(executable, daemon)
         already = False
         with_dependencies = _install_browser(target, executable, failures)
         failures = launch_failures(executable)
@@ -92,8 +109,19 @@ def on_this_machine() -> str:
         lines = [f"Installs agent-browser {VERSION}, the `{target.asset}` release asset, into `{own_directory()}`."]
     if not target.chrome_for_testing:
         lines.append(
-            f"Chrome for Testing has no `{target.label}` build, so a browser takes the distribution's Chromium, "
-            "such as `sudo apt install chromium`."
+            "Chrome for Testing has no build for musl Linux, so a browser takes the distribution's Chromium, "
+            "such as `sudo apk add chromium`."
+        )
+    elif not target.agent_browser_installs_chrome:
+        libraries = (
+            "and installs Chromium's system libraries, since this runs as root or sudo needs no password"
+            if os.getuid() == 0 or _can_sudo(SUDO_PROBE_TIMEOUT_SECONDS)
+            else "but cannot install Chromium's system libraries, since sudo needs a password here; if it still does "
+            "not launch, the failure names the command that does"
+        )
+        lines.append(
+            f"When no browser launches, it downloads Chrome for Testing {chrome.VERSION} into "
+            f"`~/.agent-browser/browsers` {libraries}."
         )
     elif not target.linux:
         lines.append("When no browser launches, it downloads Chrome for Testing into `~/.agent-browser/browsers`.")
@@ -130,9 +158,53 @@ def skills_directory() -> Path:
 
 
 def variables() -> dict[str, str]:
-    """What every agent-browser process gets: its skills found where reality-check put them, no update check."""
+    """What every agent-browser process gets: its skills, no update check, and a short socket folder when needed."""
     # agent-browser finds the skills only through this variable, not beside its binary.
-    return {"AGENT_BROWSER_SKILLS_DIR": str(skills_directory()), "AGENT_BROWSER_NO_VERSION_CHECK": "1"}
+    found = {"AGENT_BROWSER_SKILLS_DIR": str(skills_directory()), "AGENT_BROWSER_NO_VERSION_CHECK": "1"}
+    sockets = socket_directory()
+    if sockets is not None:
+        found["AGENT_BROWSER_SOCKET_DIR"] = str(sockets)
+    return found
+
+
+def socket_directory() -> Path | None:
+    """A short private socket folder for agent-browser, or None when the one it picks itself holds every socket.
+
+    agent-browser's own pick is a non-empty `AGENT_BROWSER_SOCKET_DIR`, else `$XDG_RUNTIME_DIR/agent-browser`, else
+    `~/.agent-browser`; only the last grows with a path reality-check does not choose. Windows uses no Unix sockets.
+    """
+    if sys.platform == "win32" or os.environ.get("AGENT_BROWSER_SOCKET_DIR") or os.environ.get("XDG_RUNTIME_DIR"):
+        return None
+    default = Path.home() / ".agent-browser"
+    if len(os.fsencode(default / f"{'x' * SESSION_BYTES}{SOCKET_SUFFIX}")) <= SOCKET_PATH_BYTES:
+        return None
+    directory = Path(SHORT_SOCKET_DIRECTORY.format(uid=os.getuid()))
+    try:
+        with contextlib.suppress(FileExistsError):
+            directory.mkdir(mode=0o700)
+            # The umask can only take bits away, and the owner needs all three.
+            directory.chmod(0o700)
+        status = directory.lstat()
+    except OSError as error:
+        raise _no_socket_directory(default, directory, str(error)) from error
+    # Another user who made or owns it could read every session's socket, or swap it for theirs.
+    if not stat.S_ISDIR(status.st_mode):
+        raise _no_socket_directory(default, directory, "it is not a folder")
+    if status.st_uid != os.getuid():
+        raise _no_socket_directory(default, directory, "another user owns it")
+    if status.st_mode & 0o077:
+        raise _no_socket_directory(default, directory, f"others may use it (mode {stat.S_IMODE(status.st_mode):o})")
+    return directory
+
+
+def _no_socket_directory(default: Path, directory: Path, why: str) -> RealityCheckError:
+    return RealityCheckError(
+        code="browser-socket-directory",
+        message=f"agent-browser's socket paths under {default} would be too long, and {directory} cannot hold them "
+        f"instead: {why}.",
+        remedy="Set AGENT_BROWSER_SOCKET_DIR to a short folder only you can write, such as one made with "
+        f"`mkdir -m 700`, then run `{INSTALL_COMMAND}` again.",
+    )
 
 
 def environment() -> dict[str, str]:
@@ -165,24 +237,34 @@ def installed_version(executable: Path) -> str | None:
     return match.group(1) if completed.returncode == 0 and match else None
 
 
-def launch_failures(executable: Path) -> list[str]:
+class LaunchFailure(NamedTuple):
+    """One reason agent-browser cannot launch a headless browser, and the doctor check that gave it, when one did."""
+
+    check: str | None
+    message: str
+
+
+def launch_failures(executable: Path) -> list[LaunchFailure]:
     """Why agent-browser cannot launch a headless browser, from its own doctor; empty when one launches."""
     try:
         completed = run_agent_browser(executable, ["doctor", "--offline", "--json"], DOCTOR_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        return [f"`agent-browser doctor` did not finish within {DOCTOR_TIMEOUT_SECONDS} seconds."]
+        return [LaunchFailure(None, f"`agent-browser doctor` did not finish within {DOCTOR_TIMEOUT_SECONDS} seconds.")]
     except OSError as error:
-        return [f"`agent-browser doctor` did not run: {error}"]
+        return [LaunchFailure(None, f"`agent-browser doctor` did not run: {error}")]
     try:
         checks = json.loads(completed.stdout)["checks"]
         failures = [
-            check["message"] for check in checks if check["id"].startswith(LAUNCH_CHECKS) and check["status"] == "fail"
+            LaunchFailure(check["id"], check["message"])
+            for check in checks
+            if check["id"].startswith(LAUNCH_CHECKS) and check["status"] == "fail"
         ]
         launched = any(check["id"] == LAUNCHED and check["status"] == "pass" for check in checks)
     except (ValueError, KeyError, TypeError):
-        return [f"`agent-browser doctor` printed no report: {_tail(completed.stderr or completed.stdout)}"]
+        said = _tail(completed.stderr or completed.stdout)
+        return [LaunchFailure(None, f"`agent-browser doctor` printed no report: {said}")]
     if not failures and not launched:
-        failures.append("The headless launch test did not pass.")
+        failures.append(LaunchFailure(None, "The headless launch test did not pass."))
     return failures
 
 
@@ -238,16 +320,19 @@ def _extract_package(package: Path, into: Path) -> None:
         untar.extractall(into, members=wanted, filter="data")
 
 
-def _install_browser(target: Target, executable: Path, failures: list[str]) -> bool:
+def _install_browser(target: Target, executable: Path, failures: list[LaunchFailure]) -> bool:
     """Download Chrome for Testing, with its system libraries when sudo needs no password; returns whether it did."""
     if not target.chrome_for_testing:
         raise RealityCheckError(
             code="browser-no-browser",
-            message=f"Chrome for Testing has no {target.label} build, and no system Chromium launches: "
-            f"{' '.join(failures)}",
-            remedy="Install Chromium from the system package manager, such as `sudo apt install chromium`, "
-            f"`sudo dnf install chromium`, or `sudo apk add chromium`, then run `{INSTALL_COMMAND}` again.",
+            message=f"Chrome for Testing has no build for musl Linux, and no system Chromium launches: "
+            f"{_said(failures)}",
+            remedy="Install Chromium from the system package manager, such as `sudo apk add chromium`, "
+            f"`sudo apt install chromium`, or `sudo dnf install chromium`, then run `{INSTALL_COMMAND}` again.",
         )
+    if not target.agent_browser_installs_chrome:
+        chrome.download_chrome(INSTALLING)
+        return _can_sudo(SUDO_TIMEOUT_SECONDS) and chrome.install_system_libraries(INSTALLING, os.getuid() == 0)
     # agent-browser runs the package manager through sudo itself, so Chrome still lands in this user's home.
     with_dependencies = target.linux and _can_sudo(SUDO_TIMEOUT_SECONDS)
     arguments = ["install", "--with-deps"] if with_dependencies else ["install"]
@@ -293,31 +378,60 @@ def _can_sudo(timeout: float) -> bool:
 
 
 def _does_not_launch(
-    target: Target, executable: Path, with_dependencies: bool, failures: list[str]
+    target: Target, executable: Path, with_dependencies: bool, failures: list[LaunchFailure]
 ) -> RealityCheckError:
     if target.linux and not with_dependencies:
         return RealityCheckError(
             code="browser-missing-system-libraries",
-            message=f"The headless browser agent-browser installed does not launch, most likely for want of the "
-            f"system libraries Chromium needs: {' '.join(failures)}",
-            remedy=f"Run `{executable} install --with-deps`, which installs Chromium's system libraries through "
-            f"sudo, then run `{INSTALL_COMMAND}` again.",
+            message=f"The headless browser installed does not launch, most likely for want of the system libraries "
+            f"Chromium needs: {_said(failures)}",
+            remedy=_system_libraries_remedy(target, executable),
         )
     return RealityCheckError(
         code="browser-launch-failed",
-        message=f"agent-browser cannot launch a headless browser: {' '.join(failures)}",
+        message=f"agent-browser cannot launch a headless browser: {_said(failures)}",
         remedy=f"Run `{executable} doctor` to see why, then run `{INSTALL_COMMAND}` again.",
     )
+
+
+def _system_libraries_remedy(target: Target, executable: Path) -> str:
+    if target.agent_browser_installs_chrome:
+        return (
+            f"Run `{executable} install --with-deps`, which installs Chromium's system libraries through sudo, then "
+            f"run `{INSTALL_COMMAND}` again."
+        )
+    command = chrome.system_libraries_command()
+    if command is None:
+        return (
+            f"Install Chromium's system libraries with the system package manager, then run `{INSTALL_COMMAND}` again."
+        )
+    return f"Run `{command}`, which installs Chromium's system libraries, then run `{INSTALL_COMMAND}` again."
+
+
+def _daemon_failed(executable: Path, messages: list[str]) -> RealityCheckError:
+    return RealityCheckError(
+        code="browser-daemon-failed",
+        message=f"agent-browser cannot start its daemon, which no browser download fixes: {' '.join(messages)}",
+        remedy=f"Run `{executable} doctor` to see why; when the socket path is too long, set AGENT_BROWSER_SOCKET_DIR "
+        f"to a short folder only you can write. Then run `{INSTALL_COMMAND}` again.",
+    )
+
+
+def _said(failures: list[LaunchFailure]) -> str:
+    return " ".join(failure.message for failure in failures)
 
 
 def _remaining_step(target: Target, executable: Path) -> str | None:
     # agent-browser hands this machine's certificate authorities to Chromium through certutil.
     if not target.linux or shutil.which("certutil") is not None:
         return None
-    return (
+    step = (
         "Install `libnss3-tools` (Debian/Ubuntu) or `nss-tools` (Fedora/RHEL) so checks' browsers trust the "
-        f"certificates this machine trusts; `{executable} install --with-deps` also installs it."
+        "certificates this machine trusts"
     )
+    if not target.agent_browser_installs_chrome:
+        return f"{step}."
+    return f"{step}; `{executable} install --with-deps` also installs it."
 
 
 def _tail(output: str) -> str:

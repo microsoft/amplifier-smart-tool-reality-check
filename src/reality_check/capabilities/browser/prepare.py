@@ -9,6 +9,7 @@ from typing import NamedTuple
 from reality_check.capabilities.browser.install import INSTALL_COMMAND, own_executable, run_agent_browser
 from reality_check.capabilities.browser.shim import write_shim
 from reality_check.capabilities.browser.target import Unavailable, resolve_target
+from reality_check.schemas import RealityCheckError
 
 SESSION_PREFIX = "rc-"
 LIST_TIMEOUT_SECONDS = 15
@@ -67,9 +68,9 @@ def close_sessions(executable: Path, session: str) -> None:
     try:
         listed = run_agent_browser(executable, ["session", "list", "--json"], LIST_TIMEOUT_SECONDS)
         sessions = json.loads(listed.stdout)["data"]["sessions"]
-    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+    except (OSError, subprocess.SubprocessError, RealityCheckError, ValueError, KeyError, TypeError):
         return
     for name in sessions:
         if isinstance(name, str) and (name == session or name.startswith(f"{session}-")):
-            with contextlib.suppress(OSError, subprocess.SubprocessError):
+            with contextlib.suppress(OSError, subprocess.SubprocessError, RealityCheckError):
                 run_agent_browser(executable, ["--session", name, "close"], CLOSE_TIMEOUT_SECONDS)

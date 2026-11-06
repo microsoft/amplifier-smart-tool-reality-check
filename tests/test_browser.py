@@ -127,6 +127,34 @@ def test_the_shim_hands_certificates_only_once_certutil_is_there(tmp_path: Path,
     assert f"AGENT_BROWSER_CA_CERT={bundles[2]}" in run_shim(tmp_path, certutil=True, ssl_cert_file=bundles[2])
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="runs the POSIX shim")
+def test_the_shim_gives_agent_browser_a_short_socket_folder_when_its_own_is_too_long(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, bundles: list[Path]
+) -> None:
+    monkeypatch.delenv("AGENT_BROWSER_SOCKET_DIR", raising=False)
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setenv("HOME", "/" + "h" * 100)
+    monkeypatch.setattr(install, "SHORT_SOCKET_DIRECTORY", str(tmp_path / "rc-ab"))
+
+    output = run_shim(tmp_path, certutil=False)
+
+    assert f"AGENT_BROWSER_SOCKET_DIR={tmp_path / 'rc-ab'}" in output
+
+
+def test_closing_sessions_without_a_usable_socket_folder_does_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable = tmp_path / "agent-browser"
+    executable.write_text("binary", encoding="utf-8")
+
+    def refused(executable: Path, arguments: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
+        raise RealityCheckError(code="browser-socket-directory", message="", remedy="")
+
+    monkeypatch.setattr(prepare, "run_agent_browser", refused)
+
+    prepare.close_sessions(executable, "rc-a")
+
+
 class Browsing:
     """agent-browser as a check sees it, recording what the check runs it with when it ends."""
 

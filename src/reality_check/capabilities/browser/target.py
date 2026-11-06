@@ -38,9 +38,18 @@ class Target(NamedTuple):
         return self.label.startswith("linux")
 
     @property
+    def musl(self) -> bool:
+        return self.label.startswith("linux-musl")
+
+    @property
     def chrome_for_testing(self) -> bool:
-        """Whether `agent-browser install` can download Chrome for Testing, which has no Linux arm64 or musl build."""
-        return not self.linux or self.label == "linux-x64"
+        """Whether Chrome for Testing has a build here; it has none for musl."""
+        return not self.musl
+
+    @property
+    def agent_browser_installs_chrome(self) -> bool:
+        """Whether `agent-browser install` downloads Chrome for Testing here; it refuses Linux arm64, which has one."""
+        return self.chrome_for_testing and self.label != "linux-arm64"
 
 
 def resolve_target() -> Target | Unavailable:
