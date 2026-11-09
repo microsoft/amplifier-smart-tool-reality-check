@@ -89,10 +89,10 @@ To install manually:
 
 ```bash
 # Install the Agent Skill so your agent knows about it.
-npx skills add microsoft/amplifier-smart-tool-reality-check#v0.8.1
+npx skills add microsoft/amplifier-smart-tool-reality-check#v0.9.0
 # If that fails, copy this repository's skills/reality-check folder into your agent's skills folder.
 # Choose the provider(s) you want: [all], [copilot], [amplifier-agent], [codex], or [claude]
-uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.1"
+uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.0"
 # Once, to give checks everything they can use
 reality-check install
 # If your agent shows MCP Apps, register `reality-check mcp` as its MCP server to see checks in the chat.
@@ -102,7 +102,7 @@ reality-check install
 To use it as a library:
 
 ```bash
-uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.8.1"
+uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.0"
 ```
 
 To uninstall:
