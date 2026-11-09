@@ -145,6 +145,7 @@ The main capability is `check-software`: it checks software as a user would and 
 Read `reality-check check-software --help` before starting a check.
 Run one check when a change is done, with a request that names what changed, not one after each edit, and none for a change no user sees.
 A broad request such as "validate my app" works and takes much longer.
+A report names the parts next to what it checked that it did not cover, and offers a broader check of them.
 Checks that do not depend on each other should be kicked off in parallel. A faster model or lower reasoning effort trades some quality for time and cost.
 The other capabilities serve it: follow, steer, or cancel a running check, read or list checks, show them to the person in the app, and list the models a check runs on.
 Show a check with `mcp`'s `open_app` in a host that renders MCP Apps, and with `app` in any other host.

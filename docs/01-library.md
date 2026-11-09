@@ -114,8 +114,9 @@ A report that says the software failed is a result, not an exception.
 
 Reports are Markdown with a short summary and five sections: Needs attention, Observations,
 What was checked, Next steps, and Run details. Screenshots can be embedded beside findings.
-Next steps guide the calling agent on possible investigation, fixes, and rechecks; they do not
-authorize actions outside the caller's scope.
+What was checked also names the parts next to the checked items that the check did not cover.
+Next steps guide the calling agent on possible investigation, fixes, and rechecks, and offer a
+broader check of those parts with `resume`; they do not authorize actions outside the caller's scope.
 
 ### The check's directory
 

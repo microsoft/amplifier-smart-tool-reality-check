@@ -138,9 +138,10 @@ A detached check does not get them: stop it with `cancel-check`.
 
 The report starts with a short summary, then Needs attention, Observations, What was checked, Next steps, and Run details.
 It gives a verdict per item asked about, pass, fail, or not checked, with the evidence files each stands on, relative to the check's directory.
-Not checked is never a pass.
-Tell the user what the check found, not only what you changed: the verdicts, each failure's step, action, and what was recorded, and the report's path.
+Not checked is never a pass. What was checked also names the parts next to those items that the check did not cover.
+Tell the user, in plain words, what the check found, not only what you changed: the verdicts, each failure's step, action, and what was recorded, what was not checked, and the report's path.
 Next steps suggest investigations, fixes, and rechecks; act on them within the caller's authorized scope, and ask before anything that needs further approval.
+When they offer a broader check, pass the offer on to the user with the parts it would cover. Start it only when the user asks or the caller's instructions already call for it.
 
 When the check stopped to ask, its report says what it needs.
 Answer it, or check again after a fix, with the command the result's `next` names; it continues the same agent session:
