@@ -97,10 +97,7 @@ Checks take at least a few minutes, with more complex or generic asks possibly t
   `reality-check list-intelligence-models` lists run.
 - `--reasoning-effort low|medium|high|xhigh|max`: `medium` when omitted, and none for a model that
   takes none, such as `auto`.
-- `--timeout-seconds N`: how long the check may run, default 3600; `0` for no limit. Be generous:
-  testing is slow, and a check stopped early often has no report. Give about an hour for a focused
-  request, several hours for a broad one, and `0` for a long checklist. At 85% of it, the agent is
-  told how much time is left and to stop testing and report.
+- `--timeout-seconds N`: how long the check may run; no limit when omitted.
 - `--image PATH`: an image shown to the agent with the request, such as a screenshot of the bug;
   repeatable. PNG, JPEG, GIF, or WebP, on a model with `vision`.
 - `--origin TEXT`: who starts the check, such as `app` or `claude-code:<session id>`, kept in
@@ -109,7 +106,7 @@ Checks take at least a few minutes, with more complex or generic asks possibly t
   event and exit 0, or exit 1 with why it did not start.
 - Library: `check_software(request, target=None, resume=None, previous_checks=None, ask_first="when-off",
   keep_running=False, checks_directory=Path(".agents/reality-check"), agent_provider=None,
-  model=None, reasoning_effort=None, timeout_seconds=3600 (None for no limit), images=None, origin="unknown",
+  model=None, reasoning_effort=None, timeout_seconds=None (no limit), images=None, origin="unknown",
   detach=False, intelligence=None)`, which returns a `CheckRun` with `check_id`, `directory`,
   `events()`, `steer(message)`, `cancel()`, and `result()`.
 

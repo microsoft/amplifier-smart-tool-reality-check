@@ -15,7 +15,6 @@ from reality_check.intelligence.interface import Intelligence
 from reality_check.schemas import (
     DEFAULT_CHECKS_DIRECTORY,
     DEFAULT_ORIGIN,
-    DEFAULT_TIMEOUT_SECONDS,
     AgentProvider,
     AskFirst,
     BrowserInstall,
@@ -84,7 +83,7 @@ async def check_software(
     agent_provider: AgentProvider | None = None,
     model: str | None = None,
     reasoning_effort: ReasoningEffort | None = None,
-    timeout_seconds: int | None = DEFAULT_TIMEOUT_SECONDS,
+    timeout_seconds: int | None = None,
     images: list[Path] | None = None,
     origin: str = DEFAULT_ORIGIN,
     detach: bool = False,

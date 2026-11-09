@@ -32,7 +32,7 @@ reality-check manifest
 reality-check check-software --request TEXT [--target TARGET] [--resume CHECK_ID] [--previous-checks PATH ...]
                              [--ask-first when-off|always|never] [--keep-running] [--checks-directory .agents/reality-check]
                              [--agent-provider copilot|amplifier-agent|codex|claude] [--model MODEL]
-                             [--reasoning-effort low|medium|high|xhigh|max] [--timeout-seconds 3600, 0 for no limit]
+                             [--reasoning-effort low|medium|high|xhigh|max] [--timeout-seconds N]
                              [--image PATH ...] [--origin unknown] [--detach]
 ```
 
