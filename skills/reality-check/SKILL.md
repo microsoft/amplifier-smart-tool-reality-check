@@ -28,8 +28,8 @@ uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smar
 # once, to give checks everything they can use
 reality-check install
 
-# once, to show checks inline: register `reality-check mcp` as a stdio MCP server in the
-# client, then reload its MCP servers. `reality-check mcp --help` has the details.
+# once, if the host renders MCP Apps: register `reality-check mcp` as its MCP server, so checks
+# show in the host. `reality-check mcp --help` has the details.
 ```
 ## Use it
 
@@ -41,12 +41,16 @@ The main smart capability is `reality-check check-software --request "Check that
 which uses an Agent SDK like Copilot SDK or Amplifier Agent to validate software.
 Checks take at least a few minutes, with more complex or generic asks possibly taking much longer. `reality-check check-software --help` has the details.
 
-To show the user their checks, call the MCP tool `open_app` with the check's ID.
-Hosts that render MCP Apps show it inline; the rest get a URL to give the user as a browser view.
-If `open_app` is not among your tools, the MCP server is not registered or the host has not reloaded
-it: `reality-check mcp --help` says how to register it.
-Without it, start `reality-check app` in the background, since it serves until stopped,
-and give them the URL it prints or open it automatically if your host supports it.
+Show the user their checks in the best way the host allows:
+
+1. The host renders MCP Apps, such as Codex Desktop or Amplifier Unified: call the MCP tool `open_app` with the check's ID.
+   If the server is not registered or not loaded yet, register it as `reality-check mcp --help` says,
+   use the next way for now, and tell the user the app shows in the host after the host reloads its MCP servers.
+2. The host can open a page for the user, in its own browser or preview or in the user's browser:
+   start `reality-check app` in the background, since it serves until stopped, and open the URL it prints.
+3. Otherwise, start `reality-check app` the same way and give the user its URL.
+
+Do not register the MCP server in a host that does not render MCP Apps.
 
 ## Keep it current
 
@@ -61,4 +65,5 @@ git ls-remote --tags --refs --sort=-v:refname https://github.com/microsoft/ampli
 If it is newer than `reality-check --version`, run the install command again with that tag and the extras
 `uv tool list --show-extras` reports. For a library, run `uv add` again with the new tag.
 Update the skill with `npx skills add microsoft/amplifier-smart-tool-reality-check#<tag>`, adding `-g` for global installs.
+In a host that renders MCP Apps, also make sure `reality-check mcp` is registered, whether or not there was a newer release.
 Do not try to get around restrictions or operate against the user's preferences to update tools (or skills).

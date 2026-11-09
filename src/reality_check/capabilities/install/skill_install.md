@@ -3,6 +3,9 @@ options: it installs every component this machine supports, which gives checks t
 with. `--component` only limits it to the ones named. It needs no model provider. Running it again
 reports what is there.
 
+It does not register the MCP server that shows checks in the host. In a host that renders MCP Apps,
+`reality-check mcp --help` says how.
+
 Checks find what is installed themselves. A check that needs a component before it is installed has
 its agent install it and goes on with it.
 

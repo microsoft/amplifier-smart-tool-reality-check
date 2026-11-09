@@ -97,8 +97,8 @@ uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smar
 # once, to give checks everything they can use
 reality-check install
 
-# once, to show checks inline: register `reality-check mcp` as a stdio MCP server in the
-# client, then reload its MCP servers. `reality-check mcp --help` has the details.
+# once, if the host renders MCP Apps: register `reality-check mcp` as its MCP server, so checks
+# show in the host. `reality-check mcp --help` has the details.
 ```
 
 `[all]` brings every agent provider the model-backed capabilities run through. Put
@@ -114,7 +114,8 @@ git ls-remote --tags --refs --sort=-v:refname https://github.com/microsoft/ampli
 
 If it is newer than `reality-check --version`, run the install command again with that tag and the extras
 `uv tool list --show-extras` reports, or `uv add` again with the new tag for a library. Update the skill with
-`npx skills add microsoft/amplifier-smart-tool-reality-check#<tag>`.
+`npx skills add microsoft/amplifier-smart-tool-reality-check#<tag>`. In a host that renders MCP Apps, also make sure
+`reality-check mcp` is registered.
 
 ## Prerequisites
 
@@ -146,6 +147,7 @@ Run one check when a change is done, with a request that names what changed, not
 A broad request such as "validate my app" works and takes much longer.
 Checks that do not depend on each other should be kicked off in parallel. A faster model or lower reasoning effort trades some quality for time and cost.
 The other capabilities serve it: follow, steer, or cancel a running check, read or list checks, show them to the person in the app, and list the models a check runs on.
+Show a check with `mcp`'s `open_app` in a host that renders MCP Apps, and with `app` in any other host.
 
 ## Choosing a surface
 

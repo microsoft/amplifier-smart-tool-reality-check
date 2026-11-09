@@ -18,8 +18,11 @@ original report text.
 
 The app only shows checks. The person's agent starts, steers, and cancels them with the tool.
 
-The app's view is an MCP App. The page hosts it the way an MCP Apps host would inline, for agents
-that cannot. `mcp`'s `open_app` tool serves the same app from inside a session.
+The app's view is an MCP App. The page hosts it the way an MCP Apps host would, for hosts that
+cannot. In a host that renders MCP Apps, call `mcp`'s `open_app` tool instead, and the host
+shows the same app itself: `reality-check mcp --help` says how to register it. Elsewhere, start
+`app` in the background and open its URL for the person if the host can open a page, or give it
+to them.
 
 ```bash
 # every check on this machine, on a free port; prints the URL, then blocks until Ctrl+C
