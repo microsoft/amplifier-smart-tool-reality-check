@@ -337,7 +337,7 @@ async def test_a_check_near_its_timeout_tells_its_agent_to_report_with_the_time_
 
 async def test_a_check_without_a_timeout_has_no_deadline(tmp_path: Path) -> None:
     fake = FakeIntelligence(finishes())
-    run = await lib.check_software(REQUEST, checks_directory=tmp_path, timeout_seconds=None, intelligence=fake)
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=fake)
 
     result = await run.result()
 

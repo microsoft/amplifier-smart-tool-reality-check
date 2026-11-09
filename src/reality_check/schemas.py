@@ -219,7 +219,6 @@ FULL_FIELDS = ("arguments", "result", "detailed_result")
 SHORTENED_LENGTH = 500
 # Relative, so checks are kept beside the project the caller works in.
 DEFAULT_CHECKS_DIRECTORY = Path(".agents/reality-check")
-DEFAULT_TIMEOUT_SECONDS = 3600
 
 
 class CheckUsage(BaseModel):
@@ -328,9 +327,7 @@ class CheckRecord(BaseModel):
     reasoning_effort: ReasoningEffort | None = Field(description="What was sent; None when the model takes none")
     session_id: str | None = None
     status: CheckStatus | Literal["failed"] = "running"
-    timeout_seconds: int | None = Field(
-        default=DEFAULT_TIMEOUT_SECONDS, description="The check's deadline; None when it has none"
-    )
+    timeout_seconds: int | None = Field(default=None, description="The check's deadline; None when it has none")
     usage: CheckUsage = Field(default_factory=CheckUsage, description="Kept with every model call while the check runs")
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     ended_at: datetime | None = None

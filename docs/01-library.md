@@ -20,7 +20,7 @@ async def check_software(
     agent_provider: AgentProvider | None = None,  # copilot, amplifier-agent, codex, or claude; when None, the resumed check's, else the first installed, copilot first
     model: str | None = None,         # the agent provider's default in DEFAULT_INTELLIGENCE_MODELS when None; one of INTELLIGENCE_MODELS
     reasoning_effort: ReasoningEffort | None = None,  # medium when None, and none sent for a model that takes none
-    timeout_seconds: int | None = DEFAULT_TIMEOUT_SECONDS,  # 3600; None for no limit; see below
+    timeout_seconds: int | None = None,  # None for no limit; see below
     images: list[Path] | None = None, # images shown to the agent with the request; copied into the check
     origin: str = DEFAULT_ORIGIN,     # who starts the check, such as "app" or "claude-code:<session id>"; "unknown" by default
     detach: bool = False,             # run the check in a process of its own that outlives this one
@@ -108,7 +108,7 @@ CheckResult
 
 ### Timeouts
 
-A check stopped at its deadline often has no report, so set `timeout_seconds` generously: about an hour for a focused request, several hours for a broad one, and None for a long checklist. At 85% of it, the check steers the agent, with origin `reality-check`, to stop testing and report in the time left. A check still running at the deadline is cancelled, ends `timed-out`, and raises `CheckTimeoutError`, whose `result` holds what it had; its `failed` event has code `check-timeout`.
+A check has no deadline unless `timeout_seconds` sets one. At 85% of it, the check steers the agent, with origin `reality-check`, to stop testing and report in the time left. A check still running at the deadline is cancelled, ends `timed-out`, and raises `CheckTimeoutError`, whose `result` holds what it had; its `failed` event has code `check-timeout`.
 
 A report that says the software failed is a result, not an exception.
 

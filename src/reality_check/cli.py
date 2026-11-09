@@ -28,7 +28,6 @@ from reality_check.schemas import (
     COMPONENTS,
     DEFAULT_CHECKS_DIRECTORY,
     DEFAULT_ORIGIN,
-    DEFAULT_TIMEOUT_SECONDS,
     AgentProvider,
     AskFirst,
     CheckEvent,
@@ -165,8 +164,8 @@ def check_software(
         ReasoningEffort | None, typer.Option("--reasoning-effort", help="high, or none for a model that takes none.")
     ] = None,
     timeout_seconds: Annotated[
-        int, typer.Option("--timeout-seconds", min=0, help="How long the check may run; 0 for no limit.")
-    ] = DEFAULT_TIMEOUT_SECONDS,
+        int | None, typer.Option("--timeout-seconds", min=1, help="How long the check may run; no limit when omitted.")
+    ] = None,
     images: Annotated[
         list[Path] | None, typer.Option("--image", help="An image shown to the agent with the request; repeatable.")
     ] = None,
@@ -189,7 +188,7 @@ def check_software(
                 agent_provider=agent_provider,
                 model=model,
                 reasoning_effort=reasoning_effort,
-                timeout_seconds=timeout_seconds or None,
+                timeout_seconds=timeout_seconds,
                 images=images,
                 origin=origin,
                 detach=detach,
