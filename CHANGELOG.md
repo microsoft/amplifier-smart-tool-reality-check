@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.9.0 (2026-11-09)
+
+- The skill and `--help` tell callers to register `reality-check mcp` on install and update, but only in hosts that render MCP Apps. `reality-check mcp --help` has steps for Codex Desktop and Amplifier Unified.
+- The output of `check-software` should include what the check did not cover. Then, next steps are written so the calling agent can either continue with those things that were not covered or ask the user if they want to do them.
+- Checks now have no timeout by default. `--timeout-seconds` must be at least 1 when given, and `DEFAULT_TIMEOUT_SECONDS` is removed.
+- `check-software` will punt back requests to write, fix, run the project's own tests, to be a release gate, etc.
+- `check-software` is encouraged to use what the project already has to start and drive the app, such as its start scripts, seed data, test accounts, Digital Twin Universe profile, and end-to-end tests. `check-software --help` asks callers to name them in the request.
+
 ## 0.8.1 (2026-11-06)
 
 - On Linux arm64, `reality-check install --component browser` downloads a pinned Chrome for Testing and installs Chromium's system libraries when running as root or sudo needs no password.
