@@ -59,9 +59,10 @@ CAPABILITIES = (
     ),
     Capability(
         "mcp",
-        "Serve the app over stdio as an MCP App, so a session can show it to the person inline or in a browser.",
+        "Serve the app over stdio as an MCP App, so a session can show it to the person in the host or in a browser.",
         model_backed=False,
         skill="adapters/skill_mcp.md",
+        resources=("adapters/hosts/codex-desktop.md", "adapters/hosts/amplifier-unified.md"),
     ),
     Capability(
         "list-intelligence-models",
