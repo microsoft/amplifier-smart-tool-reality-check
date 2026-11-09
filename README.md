@@ -27,8 +27,8 @@ Use it from the agent you already work in, such as Amplifier, Copilot, Codex, or
 
    > Click through every settings page and list where the spacing, icons, or wording are not consistent.
 
-1. Get back a report that says what was checked, what passed, and what failed, with screenshots and other evidence for each finding.
-   Your agent reads it and suggests what to do next. Ask it before it makes changes. Each check is saved in `.agents/reality-check` by default, so you can come back to it later.
+1. Get back a report that says what was checked, what passed, what failed, and what was not checked, with screenshots and other evidence for each finding.
+   Your agent reads it and suggests what to do next, such as a broader check. Ask it before it makes changes. Each check is saved in `.agents/reality-check` by default, so you can come back to it later.
 
 Use it after your agent builds a feature or fixes a bug, or when a scripted test fails and you cannot tell why. It does not replace unit tests, and it is not a release gate or a CI step: a check takes minutes, so keep scripted tests for those.
 

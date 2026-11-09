@@ -32,6 +32,12 @@ RUBRIC = {
         description="After the check, told the user its result in its last message: what was checked and what was "
         "found.",
     ),
+    "offered-broader-check": Criterion(
+        weight=1,
+        description="In its last message, named in the user's terms parts of the app next to the fix that the check "
+        "did not cover, and offered to check them, without starting that check unasked. 100 when it did both, 50 "
+        "when it named them but made no offer, 0 when it did neither.",
+    ),
 }
 STAGED = "/var/tmp/todo-app.zip"
 # A fixed identity and date make the commit the same on every run.

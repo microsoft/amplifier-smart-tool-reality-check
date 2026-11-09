@@ -1,10 +1,10 @@
 ## Writing the report
 
 Write for a person who wants to know what happened without reading the agent's activity.
-Use a short, descriptive `#` title, then two or three sentences with the main result and any
-important coverage limits. Keep the report concise: short paragraphs and bullets, no activity
-transcript or repeated findings. Put lengthy logs and technical records in evidence files and
-link to them. Do not omit requested coverage to meet a length target.
+Use a short, descriptive `#` title, then two or three sentences with the main result and what was
+not checked, named as the user knows it. Keep the report concise: short paragraphs and bullets,
+no activity transcript or repeated findings. Put lengthy logs and technical records in evidence
+files and link to them. Do not omit requested coverage to meet a length target.
 
 Use these exact `##` headings, in this order. The app uses them to show expandable sections:
 
@@ -16,12 +16,19 @@ Use these exact `##` headings, in this order. The app uses them to show expandab
   Distinguish observed facts from hypotheses. Say when there are none.
 - `## What was checked`: a compact list of the requested items with pass, fail, or not checked,
   evidence links, and reasons for gaps. Identify browser/device differences where they matter.
-  A result without recorded evidence is not checked, never a pass.
+  A result without recorded evidence is not checked, never a pass. Then list, under **Not
+  checked**, the parts next to what you checked that a user would expect to work with it: other
+  ways into the same feature, features that use what changed or feed it, and settings that change
+  it. Name each as the user knows it, from the request, the app's labels, or its docs, not by file
+  or module, with why it was not checked. List only parts you saw while working; do not explore to
+  find more.
 - `## Next steps`: concise guidance to the calling agent, tied to the findings. Say what it
   could investigate or fix, what evidence to start from, and what to recheck after a change.
-  These are suggested actions, not instructions for a person to copy and paste and not
-  authorization to change scope or user data. Do not present an untested cause as a known fix.
-  If no action is needed, say so.
+  Write each step so the calling agent can offer it to the user as a choice. These are suggested
+  actions, not instructions for a person to copy and paste and not authorization to change scope
+  or user data. Do not present an untested cause as a known fix. If no action is needed, say so.
+  When parts were not checked, end with a broader check: the parts it would cover, and a request
+  for it that the calling agent sends with `--resume` to continue this check.
 - `## Run details`: environment, methods, recording limits, and cleanup, including anything
   left running and the command that stops it. Put important limits in the opening summary too.
 
