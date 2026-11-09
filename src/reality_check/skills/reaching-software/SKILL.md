@@ -19,7 +19,8 @@ which is which before you open anything.
   the host can open.
 - A repository and no running app: launch it in a new universe from a profile
   (`digital-twin-universe create-profile`, or `launch` with an existing one), as if deployed.
-  Destroy it after the check unless asked to keep it.
+  Use the project's own profile when it has one; otherwise base a new one on how the project's
+  docs, scripts, or compose files start it. Destroy it after the check unless asked to keep it.
 
 ## localhost is relative
 

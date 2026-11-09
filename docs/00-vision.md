@@ -2,44 +2,25 @@
 
 An agent that builds an app often says the app works, but no one has used it yet.
 Tests pass, the agent claims success, yet a real user clicks a button and gets something unexpected.
-Agents also tend to write too many of the wrong tests: tests that mock away the thing they claim to check, tests that repeat each other, and suites so slow that no one runs them.
+Reality Check closes the gap between "the agent says it works" and "a user can do what they came to do," and it keeps the cost of knowing that appropriate to the value it brings.
 
-Reality Check is a testing and validation expert that any agent can call on.
-It closes the gap between "the agent says it works" and "a user can do what they came to do," and it keeps the cost of knowing that appropriate to the value it brings.
+The caller gives it an app and tells it what to validate.
+It uses the app as a real user does, records what happens, and gives evidence for each result that comes from what the tool recorded.
+It keeps the scripts it writes along the way, so a later run reuses or updates them instead of starting over, and uses a model only for what changed.
 
-It works in two ways:
-- **Testing in reality:** The caller gives it an app and tells it what to validate. It uses the app as a real user does, records what happens, and gives evidence for each result that comes from what the tool recorded. It keeps the tests it writes along the way, so a later run reuses or updates them instead of starting over, and uses a model only for what changed.
-- **It sets up testing that lives in the project:** It sets up and maintains the project's own tests, and sets up the project so that anyone who works in it knows which tests to run, and when. It fills the gaps a project has and removes the tests that cost more than they catch. They are typically run without going through Reality Check.
-
-**Every kind of testing runs where its speed fits.**
-- Testing earns its place by what it covers and catches for the time it costs.
-- Static checks, unit tests, and integration tests that finish in less than a minute run on every commit and every PR.
-- A small set of end-to-end smoke tests for the most important user paths runs before merge.
-- Slow testing, such as a click-through of every page or a pass against realistic data, runs when it's worth the wait: after a large change, before a release, or on a schedule.
-- Reality Check decides where each kind of testing belongs, and moves anything that is in the wrong place.
-- A change runs only the testing it can affect. A change to the billing page runs what covers billing and that page, not everything.
-- Reality Check makes this obvious to anyone who works in the project. It records what to run, and when, in the project's docs, agent instructions such as `AGENTS.md`, and CI config. An agent or a person then runs the right things without calling Reality Check.
+**A run is worth the time it takes.**
+- A run earns its place by what it covers and catches for the time it costs.
+- A change runs only the testing it can affect. A change to the billing page tests billing and that page, not everything. A broader run is there when the caller asks for it.
+- A run fits after a large change, not after every small one. The same assertions on each change belong in scripted tests, which are faster and cheaper.
 
 ## Example Uses
 
-### Ad hoc testing
 - "My app is <here>. Check that a new user can sign up and send a message."
 - "Here is my repository. Set it up as if it were deployed, and check that the dashboard loads in under three seconds with no console errors."
 - "Click through every page and every settings submenu, and fix where spacing, icons, wording, or controls are not consistent with each other or with our design system, such as a styled dropdown that opens a plain browser list, or an arrow icon that touches the border."
 - "Check every link on the site, and check that each filter on the transactions page changes the results the way its label says."
 - "The app runs on my other machine at `http://home-server-2:3000`. Use my browser on this Mac, where I am already signed in, and check the new export button."
 - "Run the baseline from last week against this branch, and tell me what changed that the diff does not explain."
-
-### Managing tests for a project
-- "Take care of testing for this repo", "Make my test suite faster", or "Set up end-to-end tests that will run once in a while". What Reality Check does then is based on the current state of the project:
-  - If you are getting started, it will set up appropriate tests, defaulting to be fast.
-  - You have some tests, but lacking say integration tests. It will set up high quality ones for you, remove unneeded tests, or speed things up where appropriate.
-  - If you already have a good set of tests, it makes sure the project's docs, agent instructions, and CI say when to run which tests, and changes nothing else.
-  - If you have too many tests, useless tests, they take too long, etc. It fixes that.
-- "Our PR checks take 40 minutes. Get them under five without losing what they catch."
-- "This repo has no CI. Set up the tests my agent runs when it says it is done."
-- "Tell me what you would change in our tests, but do not change anything yet."
-- "You found the export bug. Add a test so it stays fixed."
 
 ## Ways of working
 
@@ -60,7 +41,6 @@ This is what we have to consider:
   - computer use on the host or on another machine
   - a Terminal UI
   - a device or simulator for a mobile app
-- **Where the project's tests run**: on the developer's machine, in a pre-commit hook, or on a CI service such as GitHub Actions or Azure DevOps.
 
 Reality Check does not hard-code one path. It ships a few things the agent can reach for: Digital Twin Universe, a screen and browser inside a universe, and so forth. 
 It also gives guidance on the other paths: SSH and Tailscale to reach other machines, LAN URLs instead of `localhost`, attaching to a browser that is already open, and testers for native apps. 
@@ -98,13 +78,14 @@ When a test would be stronger with realistic data or a throttled network, it sug
 Each result comes with what Reality Check saw: screenshots, requests, console messages, and timings.
 A result that it could not record is marked as such. It is never reported as a pass.
 
-**It shows why it changed your tests.**
-Improving a test suite often means removing or consolidating tests, not only adding them.
-For each test it adds, removes, consolidates, or speeds up, Reality Check shows why: what the test cost in time, what it caught, and what still covers that area.
+**It says when another tool fits better.**
+Reality Check is not a general testing expert.
+When it is asked to write, fix, or run a project's own tests, or to be a release gate or CI step, it says so and gives the request back to the caller instead of starting a run. Scripted tests are faster and cheaper there.
+A broad request such as "validate my app" is still in scope. It takes longer, and Reality Check says so.
 
 **It follows your team's standards.**
-A team records its standards in the project, such as its design system, the tests it requires, and what it never mocks.
-Every run follows them, for both ad hoc testing and the project's own tests.
+A team records its standards in the project, such as its design system.
+Every run follows them.
 
 **You can see every run in one place.**
 `reality-check app` shows every run on this machine, past and active, with its report, evidence, and what its agent did.
@@ -113,6 +94,7 @@ The app only shows past or active runs. Your agent starts, steers, and stops the
 
 ## Goals
 
+- There is one main capability that tests an app and returns a verdict for each step, with the evidence for it.
 - The request is plain language. A Markdown file is ordinary context, not a special format.
 - On request, the plan is shown before the work starts, in a clear form, and uses the host's rendering (such as an MCP App) when the host has it.
 - Each failure names the step, the action, and what the record shows at that time. For example: "Step 2 (click Send): POST /api/chat returned 500, TypeError in console."
@@ -128,11 +110,12 @@ The app only shows past or active runs. Your agent starts, steers, and stops the
 ## Non-Goals
 
 - Building or running a provisioning engine. The Digital Twin Universe library does that.
+- Writing, maintaining, or running a project's own tests, such as unit tests, end-to-end suites, or CI config.
 - Load testing at scale, or security testing.
 - Being specific to one product or one harness. Each app is a user of the tool, not a part of it.
 - Managing the caller's machines, SSH keys, or network.
 - Starting or steering runs from the app.
-- Being the CI step itself. Reality Check sets up the project's tests and CI, and they run without it.
+- Being a deterministic release gate or a CI step. Scripted tests are faster and cheaper there.
 
 ## Later
 
@@ -140,7 +123,6 @@ These are out of scope for now. The design must not block them.
 
 - Simulated services, such as mail, chat, and documents.
 - Unattended testing of a deployed app behind real sign-in, such as Easy Auth, where no one has signed in before.
-- Helping decide when and how to set up evaluations for a product.
 
 ## Principles
 
@@ -148,7 +130,7 @@ These are out of scope for now. The design must not block them.
 - Give guidance, not one fixed path. Reality Check suggests ways to reach and see an app; the agent decides with what it has.
 - Evidence over claims. A verdict stands on what was recorded, not on what the agent says.
 - Judge consistency, not taste. Reality Check fixes what is inconsistent or unfinished, and follows the project's own design system when there is one.
-- As little model as possible. Anything that can run without a model does, including steps such as clicking through a flow, filling forms, and reading requests, and every regular run, such as smoke tests and CI. Reality Check's agent writes scripts for this work instead of exploring one step at a time. It spends model time only where judgment adds value: what it sees, what to explore next, and what a script did not expect.
+- As little model as possible. Anything that can run without a model does, including steps such as clicking through a flow, filling forms, and reading requests, and a flow it already tested on an earlier run. Reality Check's agent writes scripts for this work instead of exploring one step at a time. It spends model time only where judgment adds value: what it sees, what to explore next, and what a script did not expect.
 - Cost is visible. Each run reports how long it took and what it cost.
 - The library is the tool. The CLI and any other surface are thin wrappers over it.
 - Deterministic capabilities run with no model provider configured, and never refuse to load without one.

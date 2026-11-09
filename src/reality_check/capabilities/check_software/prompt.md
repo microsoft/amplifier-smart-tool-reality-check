@@ -12,6 +12,8 @@ $recent_checks
 
 First investigate the task: the request, its context, the target, files the request points to and the folders around them, and what this machine has if it is not specified or in your injected context.
 Keep that in proportion to the request: a narrow request needs only what it takes to reach and check the part it names.
+Use what the project already has before you build your own: how its docs, scripts, or compose files start it, its seed data and test accounts, its Digital Twin Universe profile, and end-to-end tests or helpers that already drive the flows you check. Copy and run what you adapt into the evidence folder rather than changing it in the project.
+A check uses the software the way a user would. When the request is instead to write, fix, or run the project's own tests, such as unit tests, an end-to-end suite, or CI, or to be a release gate, stop and end your turn with a short message that says the caller does this better with the project's own tests, and what part of the request, if any, a check could cover. When only part of the request is like that, check the rest and say in Next steps that the caller does that part. Finding out why a scripted test fails by doing what it does as a user is a check.
 $computer_use
 $browser
 $ask_first
