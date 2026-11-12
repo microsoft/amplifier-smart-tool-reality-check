@@ -48,6 +48,7 @@ from reality_check.capabilities.check_software.constants import (
     WRAP_UP,
 )
 from reality_check.capabilities.check_software.intelligence_models import require_allowed
+from reality_check.capabilities.check_software.machine import machine_text
 from reality_check.capabilities.check_software.record import (
     EVENTS,
     EVIDENCE,
@@ -719,13 +720,32 @@ async def _start(
     computer_use = await asyncio.to_thread(prepare_computer_use, check_id, SKILLS_CACHE_DIRECTORY)
     browser = await asyncio.to_thread(prepare_browser, check_id, SKILLS_CACHE_DIRECTORY)
     uv = shutil.which("uv")
+    machine = await asyncio.to_thread(machine_text)
     if resumed is not None:
         prompt = _resume_prompt(
-            request, directory, root / resumed.check_id, previous, ask_first, keep_running, computer_use, browser
+            request=request,
+            directory=directory,
+            resumed=root / resumed.check_id,
+            previous_checks=previous,
+            ask_first=ask_first,
+            keep_running=keep_running,
+            computer_use=computer_use,
+            browser=browser,
+            machine=machine,
         )
     else:
         prompt = _prompt(
-            request, target, directory, previous, recent, ask_first, keep_running, computer_use, browser, uv is not None
+            request=request,
+            target=target,
+            directory=directory,
+            previous_checks=previous,
+            recent_checks=recent,
+            ask_first=ask_first,
+            keep_running=keep_running,
+            computer_use=computer_use,
+            browser=browser,
+            has_uv=uv is not None,
+            machine=machine,
         )
     agent_request = AgentRequest(
         initial_message=prompt,
@@ -1059,6 +1079,7 @@ def _prompt(
     computer_use: ComputerUse | NotInstalled | Unavailable,
     browser: Browser | BrowserNotInstalled | BrowserUnavailable,
     has_uv: bool,
+    machine: str,
 ) -> str:
     files = _named_files(request, target)
     named = NAMED_FILES.substitute(files=_listed(files)) if files else ""
@@ -1074,6 +1095,7 @@ def _prompt(
         ask_first=ASK_FIRST[ask_first],
         keep_running=KEEP_RUNNING[keep_running],
         uv_missing="" if has_uv else UV_MISSING,
+        machine=machine,
         dtu=_dtu_command(),
         report_format=(HERE / "report-format.md").read_text(encoding="utf-8"),
     )
@@ -1088,6 +1110,7 @@ def _resume_prompt(
     keep_running: bool,
     computer_use: ComputerUse | NotInstalled | Unavailable,
     browser: Browser | BrowserNotInstalled | BrowserUnavailable,
+    machine: str,
 ) -> str:
     return Template((HERE / "resume-prompt.md").read_text(encoding="utf-8")).substitute(
         request=request.strip(),
@@ -1100,6 +1123,7 @@ def _resume_prompt(
         browser=_browser_text(browser),
         ask_first=ASK_FIRST[ask_first],
         keep_running=KEEP_RUNNING[keep_running],
+        machine=machine,
         report_format=(HERE / "report-format.md").read_text(encoding="utf-8"),
     )
 

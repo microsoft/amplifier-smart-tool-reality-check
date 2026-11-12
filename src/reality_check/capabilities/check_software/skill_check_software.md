@@ -53,7 +53,7 @@ Checks take at least a few minutes, with more complex or generic asks possibly t
 - Check once a major change is done. Skip minor refactors, small adjustments to features, tweaks that are obvious, etc.
 - Name in the check request what changed and what a user does with it. A broad request such as "validate my app" is fine when the user wants it, and takes much longer.
 - Name also what the project already has that a check can use, such as how to start it, test accounts, seed data, or end-to-end tests that drive the same flow.
-- Start checks that do not depend on each other at the same time, and follow each one:
+- Start checks that do not depend on each other at the same time, and follow each one. Each check runs its own agent, which may start several browsers, so before starting three or more, check that this machine has the memory and process room for them, and start them in batches when it does not:
 
   ```bash
   reality-check check-software --request "Check the new export button on /reports" \

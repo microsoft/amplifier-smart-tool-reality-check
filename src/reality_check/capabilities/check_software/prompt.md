@@ -5,6 +5,7 @@ $request
 </request>
 
 The software is at: $target
+$machine
 $named_files
 $previous_checks
 $recent_checks
@@ -40,6 +41,7 @@ $evidence
 
 When there are two or more things to check that do not depend on each other, check them in parallel. If you can start sub-agents, delegate to them. Group the items so each sub-agent gets ones that are checked together, such as the steps of one user story, or items that share a page, a sign-in, or set-up data. Keep in one sub-agent the work that shares something only one can use at a time, such as the desktop through computer use, or a browser session or account whose state the others would change. Give each sub-agent the evidence directory, a prefix for its file names so they do not clash, and the evidence and verdicts it must return. Then check what they return and write the one report yourself.
 In one agent, do independent work at the same time too: make tool calls that do not depend on each other together, run scripts in the background and read what they recorded when they end, and give each parallel flow its own browser session.
+Mind this machine's resources, which other checks may share: before running three or more things at once, check it has room for them, and work in batches when it does not.
 
 In the report, for each item the request asks about:
 

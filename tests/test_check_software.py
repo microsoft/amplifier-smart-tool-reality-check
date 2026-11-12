@@ -182,6 +182,23 @@ async def test_the_prompt_says_uv_is_missing_only_when_it_is(
     assert prompts == [f"[{check.UV_MISSING}]", "[]"]
 
 
+async def test_a_new_and_a_resumed_check_s_prompt_state_what_the_machine_has_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine = "When this check started, this machine had 2 CPUs and 1.5 GB of memory free."
+    monkeypatch.setattr(check, "machine_text", lambda: machine)
+    first = FakeIntelligence(finishes())
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=first)
+    await run.result()
+    resumed = FakeIntelligence(finishes())
+    await (
+        await lib.check_software("Go on.", resume=run.check_id, checks_directory=tmp_path, intelligence=resumed)
+    ).result()
+
+    assert f"\n{machine}\n" in first.runs[0].request.initial_message
+    assert f"\n{machine}\n" in resumed.runs[0].request.initial_message
+
+
 async def test_the_agent_s_final_message_is_the_report_and_is_kept_in_report_md(tmp_path: Path) -> None:
     run = await lib.check_software(
         REQUEST, checks_directory=tmp_path, intelligence=FakeIntelligence(finishes("What I need: a sign-in."))

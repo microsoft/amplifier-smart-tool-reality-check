@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The checking agent's prompt states the machine's CPUs, free memory, and room for more processes and threads. Also added instructions to be more aware of resource usage, particularly when running in parallel.
+
 ## 0.9.0 (2026-11-09)
 
 - The skill and `--help` tell callers to register `reality-check mcp` on install and update, but only in hosts that render MCP Apps. `reality-check mcp --help` has steps for Codex Desktop and Amplifier Unified.

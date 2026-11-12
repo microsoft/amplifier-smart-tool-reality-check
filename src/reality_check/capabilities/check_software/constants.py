@@ -70,6 +70,13 @@ KEEP_RUNNING: dict[bool, str] = {
     ),
 }
 
+# $machine in prompt.md and resume-prompt.md
+MACHINE = Template("When this check started, this machine had $cpus CPUs and $memory GB of memory free.")
+MACHINE_WITH_ROOM = Template(
+    "When this check started, this machine had $cpus CPUs, $memory GB of memory free, and room for $room more "
+    "processes and threads."
+)
+
 # $evidence in prompt.md and resume-prompt.md
 EVIDENCE_DIRECTORY = Template(
     "Put every piece of evidence in `$evidence`. Your final message is saved as `$report`, so in it refer to each "
