@@ -18,6 +18,9 @@ Before the first command, learn it from the CLI itself; it describes the version
   browser, such as another user's, use `--session <session>-<role>`. Flows that run in parallel,
   in scripts or sub-agents, each take their own, such as `--session <session>-2`, so their pages
   and cookies do not clash.
+- Each session is a browser of its own, with about 0.5 GB of memory and 250 processes and
+  threads. Before running three or more at once, check the machine has room for them, and close
+  each when its flow ends: `agent-browser --session <session> close`.
 - Save screenshots into the evidence folder by path.
 - This machine's trusted certificates are already handed to the browser. Do not turn off HTTPS
   checks.
