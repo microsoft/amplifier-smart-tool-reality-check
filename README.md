@@ -13,7 +13,7 @@ Use it from the agent you already work in, such as Amplifier, Copilot, Codex, or
 
 1. Ask your agent:
 
-   > Install https://github.com/microsoft/amplifier-smart-tool-reality-check and its agent skill.
+   > Go to https://github.com/microsoft/amplifier-smart-tool-reality-check and install it.
 
    If your agent shows MCP Apps, it also sets up the app that shows your checks in the chat. See [Reality Check App](#reality-check-app).
 
@@ -85,7 +85,7 @@ Prerequisites:
 
 (Optional) Install the Smart Tools skill so your agent knows about Smart Tools: `npx skills add microsoft/amplifier-smart-tools`
 
-To install manually:
+Install the agent skill and the tool:
 
 ```bash
 # Install the Agent Skill so your agent knows about it.
