@@ -102,6 +102,8 @@ class FakeTurn:
     async def events(self) -> AsyncIterator[Event]:
         while True:
             payload = await self._queue.get()
+            if isinstance(payload, Exception):
+                raise payload
             self._sequence += 1
             self.ended = isinstance(payload, TurnResult)
             yield Event("turn-events/1", SESSION, f"turn-{self.number}", self._sequence, "event", payload)
@@ -220,6 +222,9 @@ def submits(*attempts: dict[str, Any], text: str = "") -> Script:
     return script
 
 
+MARKER = {"REALITY_CHECK_ID": "20260101-000000-abcdef"}
+
+
 def request(workspace: Path | None = None, **fields: Any) -> AgentRequest:
     return AgentRequest(
         initial_message="Do the work.",
@@ -268,16 +273,21 @@ async def test_the_agent_gets_the_split_model_workspace_sessions_and_skills_and_
     assert fake.calls[-2:] == ["session.close", "agent.close"]
 
 
-async def test_path_directories_go_first_on_the_path_of_the_agent_s_tools(
+async def test_path_directories_go_first_on_the_path_of_the_agent_s_tools_beside_the_request_s_variables(
     world: Callable[..., FakeWorld], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     fake = world(answers("done"))
     monkeypatch.setenv("PATH", "/usr/bin")
 
-    await (await AmplifierAgentIntelligence().start(request(tmp_path, path_directories=[tmp_path / "shim"]))).result()
+    await (
+        await AmplifierAgentIntelligence().start(
+            request(tmp_path, path_directories=[tmp_path / "shim"], environment=MARKER)
+        )
+    ).result()
 
     [options] = fake.options
-    assert options.environment == {"PATH": f"{tmp_path / 'shim'}{os.pathsep}/usr/bin"}
+    assert options.environment == {"PATH": f"{tmp_path / 'shim'}{os.pathsep}/usr/bin", **MARKER}
+    assert "REALITY_CHECK_ID" not in os.environ
 
 
 async def test_without_effort_workspace_or_session_directory_the_state_directory_is_used(
@@ -444,6 +454,22 @@ async def test_a_turn_ending_with_empty_usage_reports_the_last_snapshot_that_had
     events = await collect(run)
 
     assert [each.data["input_tokens"] for each in events if each.kind == "usage"] == [7]
+
+
+async def test_a_turn_that_breaks_off_reports_its_last_snapshot_as_incomplete(world: Callable[..., FakeWorld]) -> None:
+    async def script(turn: FakeTurn) -> None:
+        entry = UsageEntry(provider="openai", model="gpt-6.1-sol", tokens_in=7, tokens_out=2)
+        turn.push(UsageEvent(snapshot=Usage(entries=[entry])), RuntimeError("stream broke"))
+
+    world(script)
+
+    run = await AmplifierAgentIntelligence().start(request())
+    result = await run.result()
+    events = await collect(run)
+
+    assert result.error == "RuntimeError: stream broke"
+    [usage] = [each.data for each in events if each.kind == "usage"]
+    assert (usage["input_tokens"], usage["output_tokens"], usage["incomplete"]) == (7, 2, True)
 
 
 async def test_a_failed_tool_result_carries_its_error(world: Callable[..., FakeWorld]) -> None:

@@ -37,7 +37,7 @@ from amplifier_agent import (
 )
 
 from reality_check.intelligence.events import EventLog, fresh_input
-from reality_check.intelligence.interface import agent_path, state_directory
+from reality_check.intelligence.interface import agent_environment, state_directory
 from reality_check.intelligence.schemas import (
     IMAGE_MEDIA_TYPES,
     AgentEvent,
@@ -276,8 +276,9 @@ class AmplifierAgentRun:
             working_directory=working_directory,
             sessions_directory=request.session_directory or state_directory("amplifier-agent") / "sessions",
         )
-        if (path := agent_path(request)) is not None:
-            options.environment = {"PATH": path}
+        # Over this process's environment for the agent's tools alone, so the caller's own is never changed.
+        if variables := agent_environment(request):
+            options.environment = variables
         if request.reasoning_effort is not None:
             options.reasoning_effort = request.reasoning_effort
         return options
@@ -293,70 +294,76 @@ class AmplifierAgentRun:
 
     async def _read(self, turn: Turn) -> TurnResult:
         known: Usage | None = None
-        async for event in turn.events():
-            match event.payload:
-                case UsageEvent(snapshot=snapshot) if _reported(snapshot):
-                    known = snapshot
-                case OutputDelta() as delta:
-                    self._buffer.extend(part.text for part in delta.content)
-                case ReasoningFinal() as reasoning if reasoning.text.strip():
-                    self._flush()
-                    self._emit("reasoning", reasoning.text, {}, event)
-                case ToolCallEvent(call=call):
-                    self._flush()
-                    self._tool_names[call.call_id] = call.name
-                    arguments = json.dumps(call.arguments, default=str)
-                    self._emit(
-                        "tool_call",
-                        f"{call.name} {arguments}".strip(),
-                        {
-                            "tool_call_id": call.call_id,
-                            "tool_name": call.name,
-                            "arguments": call.arguments,
-                            "source": call.source,
-                        },
-                        event,
-                    )
-                case ToolResultEvent(resolution=resolution):
-                    self._flush()
-                    outcome: dict[str, Any] = {
-                        "tool_call_id": resolution.call_id,
-                        "tool_name": self._tool_names.get(resolution.call_id, ""),
-                        "success": resolution.outcome == "completed",
-                        "result": resolution.content,
-                    }
-                    text = resolution.content or ""
-                    if resolution.error is not None:
-                        outcome["error"] = resolution.error.message
-                        text = text or resolution.error.message
-                    self._emit("tool_result", text, outcome, event)
-                case TurnResult() as result:
-                    self._flush()
-                    # Snapshots are cumulative for the turn and empty while a call is in flight, so a turn cancelled
-                    # mid-call ends with an empty one; the last that had numbers still counts what was used.
-                    usage = result.usage if _reported(result.usage) else known
-                    for entry in usage.entries if usage is not None else []:
-                        if entry.tokens_in is None and entry.tokens_out is None and entry.cost is None:
-                            continue
-                        cost = (
-                            None
-                            if entry.cost is None
-                            else {currency: float(amount) for currency, amount in entry.cost.items()}
+        try:
+            async for event in turn.events():
+                match event.payload:
+                    case UsageEvent(snapshot=snapshot) if _reported(snapshot):
+                        known = snapshot
+                    case OutputDelta() as delta:
+                        self._buffer.extend(part.text for part in delta.content)
+                    case ReasoningFinal() as reasoning if reasoning.text.strip():
+                        self._flush()
+                        self._emit("reasoning", reasoning.text, {}, event)
+                    case ToolCallEvent(call=call):
+                        self._flush()
+                        self._tool_names[call.call_id] = call.name
+                        arguments = json.dumps(call.arguments, default=str)
+                        self._emit(
+                            "tool_call",
+                            f"{call.name} {arguments}".strip(),
+                            {
+                                "tool_call_id": call.call_id,
+                                "tool_name": call.name,
+                                "arguments": call.arguments,
+                                "source": call.source,
+                            },
+                            event,
                         )
-                        data = {
-                            "model": f"{entry.provider}/{entry.model}",
-                            "input_tokens": entry.tokens_in,
-                            # Amplifier counts cache reads, not cache writes, in its input tokens.
-                            "fresh_input_tokens": fresh_input(entry.tokens_in, entry.cache_read_tokens),
-                            "output_tokens": entry.tokens_out,
-                            "cache_read_tokens": entry.cache_read_tokens,
-                            "cache_write_tokens": entry.cache_write_tokens,
-                            "cost": cost,
-                            "billing": cost or {},
+                    case ToolResultEvent(resolution=resolution):
+                        self._flush()
+                        outcome: dict[str, Any] = {
+                            "tool_call_id": resolution.call_id,
+                            "tool_name": self._tool_names.get(resolution.call_id, ""),
+                            "success": resolution.outcome == "completed",
+                            "result": resolution.content,
                         }
-                        self._emit("usage", "", data, event)
-                    return result
-        raise RuntimeError("The turn's event stream ended without a terminal event.")
+                        text = resolution.content or ""
+                        if resolution.error is not None:
+                            outcome["error"] = resolution.error.message
+                            text = text or resolution.error.message
+                        self._emit("tool_result", text, outcome, event)
+                    case TurnResult() as result:
+                        self._flush()
+                        # Snapshots are cumulative for the turn and empty while a call is in flight, so a turn
+                        # cancelled mid-call ends with an empty one; the last that had numbers still counts what was
+                        # used.
+                        self._note_usage(usage=result.usage if _reported(result.usage) else known, source=event)
+                        return result
+            raise RuntimeError("The turn's event stream ended without a terminal event.")
+        except BaseException:
+            # A turn that ends without its terminal event still used what its last snapshot counted.
+            self._note_usage(usage=known, source=None, incomplete=True)
+            raise
+
+    def _note_usage(self, usage: Usage | None, source: Event | None, incomplete: bool = False) -> None:
+        for entry in usage.entries if usage is not None else []:
+            if entry.tokens_in is None and entry.tokens_out is None and entry.cost is None:
+                continue
+            cost = None if entry.cost is None else {currency: float(amount) for currency, amount in entry.cost.items()}
+            data: dict[str, Any] = {
+                "model": f"{entry.provider}/{entry.model}",
+                "input_tokens": entry.tokens_in,
+                # Amplifier counts cache reads, not cache writes, in its input tokens.
+                "fresh_input_tokens": fresh_input(entry.tokens_in, entry.cache_read_tokens),
+                "output_tokens": entry.tokens_out,
+                "cache_read_tokens": entry.cache_read_tokens,
+                "cache_write_tokens": entry.cache_write_tokens,
+                "cost": cost,
+                "billing": cost or {},
+            }
+            if incomplete:
+                data["incomplete"] = True
+            self._emit("usage", "", data, source)
 
     def _flush(self) -> None:
         """Emit the reply text gathered from deltas as one message, so a reader sees whole messages."""

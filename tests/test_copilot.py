@@ -170,6 +170,9 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Callable[..., FakeWorld]:
     return install
 
 
+MARKER = {"REALITY_CHECK_ID": "20260101-000000-abcdef"}
+
+
 def request(workspace: Path | None = None, **fields: Any) -> AgentRequest:
     return AgentRequest(
         initial_message="Do the work.",
@@ -224,19 +227,22 @@ async def test_a_session_gets_the_workspace_mcp_servers_and_skills_and_keeps_the
     assert fake.environments == [None]
 
 
-async def test_path_directories_go_first_on_the_runtime_s_path_in_this_process_s_environment(
+async def test_path_directories_and_the_request_s_variables_go_over_this_process_s_environment(
     world: Callable[..., FakeWorld], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     fake = world(answers("done"))
     monkeypatch.setenv("PATH", "/usr/bin")
     monkeypatch.setenv("KEPT", "1")
 
-    await (await CopilotIntelligence().start(request(path_directories=[tmp_path / "shim"]))).result()
+    await (
+        await CopilotIntelligence().start(request(path_directories=[tmp_path / "shim"], environment=MARKER))
+    ).result()
 
     [environment] = fake.environments
     assert environment is not None
     assert environment["PATH"] == f"{tmp_path / 'shim'}{os.pathsep}/usr/bin"
     assert environment["KEPT"] == "1"
+    assert environment["REALITY_CHECK_ID"] == MARKER["REALITY_CHECK_ID"]
 
 
 async def test_sdk_events_become_agent_events_ending_in_one_terminal(world: Callable[..., FakeWorld]) -> None:
@@ -359,6 +365,17 @@ SCHEMA = {
     "required": ["score"],
     "additionalProperties": False,
 }
+
+
+async def test_an_sdk_failure_mid_run_keeps_the_agent_s_last_message(world: Callable[..., FakeWorld]) -> None:
+    def fails(session: FakeSession) -> None:
+        raise RuntimeError("connection lost")
+
+    world(submits(None, text="Looked at the page."), fails)
+
+    result = await (await CopilotIntelligence().start(request(output_schema=SCHEMA))).result()
+
+    assert (result.error, result.text) == ("RuntimeError: connection lost", "Looked at the page.")
 
 
 async def test_an_output_schema_adds_a_terminal_submit_tool_beside_the_built_in_ones(

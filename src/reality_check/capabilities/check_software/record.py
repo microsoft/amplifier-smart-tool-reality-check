@@ -1,5 +1,6 @@
 """A checks directory on disk: each check's check.json, its events, and whether the process running it is alive."""
 
+import contextlib
 from pathlib import Path
 import re
 import tempfile
@@ -8,6 +9,7 @@ import time
 import psutil
 from pydantic import ValidationError
 
+from reality_check.processes import START_TOLERANCE_SECONDS, since_boot
 from reality_check.schemas import CheckEvent, CheckRecord, CheckState, RealityCheckError
 
 EVENTS = "events.jsonl"
@@ -18,14 +20,33 @@ PROCESS_LOG = "process.log"
 SESSION = "session"
 EVIDENCE = "evidence"
 REPORT = "report.md"
+# What the check found its agent left running when it ended, and what it did about it.
+CLEANUP = "cleanup.json"
 CHECK_ID_PATTERN = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
+# Written into a checks directory that holds only checks, keeping them out of the project's commits.
+GITIGNORE = ".gitignore"
+CHECKS_GITIGNORE = "*\n"
+# What macOS Finder adds to any folder it shows, which says nothing about whose the folder is.
+UNOWNED_ENTRIES = {".DS_Store"}
 # Windows refuses to replace a file another process has open, such as a reader of check.json, and to open one being
 # replaced; both are brief.
 REPLACE_ATTEMPTS = 20
 REPLACE_WAIT_SECONDS = 0.05
-# A process's start time can differ by rounding between reads; a process that takes over a dead one's pid starts well
-# after it.
-START_TOLERANCE_SECONDS = 1.0
+
+
+def make_checks_directory(root: Path) -> None:
+    """Make the checks directory, with a .gitignore of its own when it has none and holds nothing but checks.
+
+    One holding anything else is left as it is, since it may be a folder the project already sets up, such as its root.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    if (root / GITIGNORE).exists() or any(
+        not CHECK_ID_PATTERN.match(entry.name) and entry.name not in UNOWNED_ENTRIES for entry in root.iterdir()
+    ):
+        return
+    # Made only if absent, so a .gitignore another process or the user wrote in the meantime is kept.
+    with contextlib.suppress(FileExistsError), (root / GITIGNORE).open("x", encoding="utf-8") as file:
+        file.write(CHECKS_GITIGNORE)
 
 
 def load_record(root: Path, check_id: str) -> CheckRecord:
@@ -103,7 +124,7 @@ def read_events(path: Path, offset: int = 0) -> tuple[list[CheckEvent], int]:
 def process_started(pid: int) -> float | None:
     """When the process `pid` started, in seconds since the machine booted, or None when there is no such process."""
     try:
-        return _since_boot(psutil.Process(pid))
+        return since_boot(psutil.Process(pid))
     except psutil.Error:
         return None
 
@@ -114,7 +135,7 @@ def alive(pid: int, started: float | None) -> bool:
         process = psutil.Process(pid)
         if process.status() == psutil.STATUS_ZOMBIE:
             return False
-        created = _since_boot(process)
+        created = since_boot(process)
     except psutil.NoSuchProcess:
         return False
     except psutil.AccessDenied:
@@ -131,9 +152,3 @@ def check_state(record: CheckRecord) -> CheckState:
     if record.status == "running" and record.pid is not None and not alive(record.pid, record.pid_started):
         return "crashed"
     return record.status
-
-
-def _since_boot(process: psutil.Process) -> float:
-    # Relative to boot, because the wall-clock start time shifts with the boot time the platform reports, which WSL
-    # moves by whole seconds between reads.
-    return process.create_time() - psutil.boot_time()

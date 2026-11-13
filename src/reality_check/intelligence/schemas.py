@@ -66,6 +66,9 @@ class AgentRequest(BaseModel):
         default_factory=list,
         description="Directories put first on the PATH of the agent's own processes, so it runs what they hold by name",
     )
+    environment: dict[str, str] = Field(
+        default_factory=dict, description="Variables set in the environment of the agent's own processes"
+    )
     session_directory: Path | None = Field(
         default=None,
         description="Where the agent provider keeps this run's session, so it can be read and resumed from there; None "

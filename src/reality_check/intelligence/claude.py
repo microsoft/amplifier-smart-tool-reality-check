@@ -2,15 +2,21 @@
 
 import asyncio
 import base64
-from collections.abc import AsyncIterator
+from collections import deque
+from collections.abc import AsyncIterator, Callable
 from concurrent.futures import ThreadPoolExecutor
 import contextlib
+from datetime import UTC, datetime
 import hashlib
 from importlib.metadata import version
 import json
+import logging
+import os
 from pathlib import Path
 import secrets
 import shutil
+import signal
+import sys
 from typing import Any
 import uuid
 
@@ -19,6 +25,8 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
     Message,
+    ProcessError,
+    ResultError,
     ResultMessage,
     SessionKey,
     SessionListSubkeysKey,
@@ -36,7 +44,7 @@ from claude_agent_sdk import (
 )
 
 from reality_check.intelligence.events import EventLog
-from reality_check.intelligence.interface import agent_path, state_directory
+from reality_check.intelligence.interface import agent_environment, state_directory
 from reality_check.intelligence.schemas import (
     IMAGE_MEDIA_TYPES,
     AgentEvent,
@@ -62,14 +70,28 @@ INTERRUPT_SECONDS = 5
 # An image the agent reads back comes as one base64 JSON line, well past the SDK's 1 MB default for a line.
 MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 PLUGIN_HASH_LENGTH = 16
+# How much of the end of Claude Code's stderr a run keeps to explain why the process failed.
+STDERR_LINES = 40
+# The SDK raises as soon as Claude Code exits, while its own task may still be reading the last of its stderr; a
+# failed run waits for stderr to stay quiet for a moment, a few moments at most, so it reports the process's last words.
+STDERR_QUIET_SECONDS = 0.1
+STDERR_QUIET_ATTEMPTS = 5
+# Where Anthropic counts a call's input. Its output tokens are final only on a result, so a call's own are not summed.
+INPUT_KEYS = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+# The SDK logs the failure of a Claude Code process that exited with placeholder text for its stderr, and with no
+# logging configured that line lands in a detached check's process.log; a run reports that failure itself, better.
+SDK_READER_LOGGER = "claude_agent_sdk._internal.query"
+SDK_FAILURE_PREFIX = "Fatal error in message reader: "
+SDK_STDERR_PLACEHOLDER = "Error output: Check stderr output for details"
 
 
 class ClaudeRun:
     """One agent in its own Claude Code process, driven in a background task from construction until it answers."""
 
-    def __init__(self, client: ClaudeSDKClient, request: AgentRequest) -> None:
+    def __init__(self, client: ClaudeSDKClient, request: AgentRequest, stderr: deque[str]) -> None:
         self._client = client
         self._request = request
+        self._stderr = stderr
         self._log = EventLog()
         self._running: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._stopping = asyncio.Event()
@@ -81,6 +103,9 @@ class ClaudeRun:
         self._unechoed: set[str] = set()
         # Claude Code reports the cost of its whole process on each result, and each result's tokens alone.
         self._cost_reported = 0.0
+        # The usage of each API call since the last result, by message id. Claude Code repeats a call's usage on the
+        # assistant message of each of its content blocks, and reports usage itself only on a result.
+        self._calls: dict[str, dict[str, Any]] = {}
         self._tool_names: dict[str, str] = {}
         self._messages = aiter(client.receive_messages())
         self._task = asyncio.create_task(self._drive())
@@ -137,7 +162,11 @@ class ClaudeRun:
                 session_id=self._session_id,
             )
         except Exception as error:  # an SDK or runtime failure is the caller's data, not a crash
-            result = AgentResult(error=f"{type(error).__name__}: {error}", session_id=self._session_id)
+            result = AgentResult(
+                text=self._last_text,
+                error=await failure_text(error=error, stderr=self._stderr),
+                session_id=self._session_id,
+            )
         finally:
             stopping.cancel()
             if turns is not None and not turns.done():
@@ -146,6 +175,7 @@ class ClaudeRun:
             if not self._running.done():
                 self._running.set_result(None)
             await self._close(interrupt=not self._answered)
+        self._note_unreported_usage()
         self._emit("terminal", result.error or result.text, result.model_dump(mode="json"))
         return result
 
@@ -228,6 +258,8 @@ class ClaudeRun:
             case AssistantMessage() as assistant:
                 if assistant.session_id is not None:
                     self._session_id = assistant.session_id
+                if assistant.message_id is not None and assistant.usage is not None:
+                    self._calls[assistant.message_id] = assistant.usage
                 self._note_assistant(assistant)
             case UserMessage() as user:
                 if user.uuid is not None:
@@ -278,6 +310,10 @@ class ClaudeRun:
 
     def _note_usage(self, message: ResultMessage) -> None:
         usage = message.usage or {}
+        if self._calls and not any(usage.get(key) for key in (*INPUT_KEYS, "output_tokens")):
+            usage = self._summed_calls()
+        calls = max(1, len(self._calls))
+        self._calls.clear()
         model_usage = message.model_usage or {}
         model = self._request.model
         cost: dict[str, float] | None = None
@@ -300,8 +336,36 @@ class ClaudeRun:
                 "cost": cost,
                 "billing": cost or {},
                 "model_usage": dict(model_usage),
+                "calls": calls,
             },
         )
+
+    def _note_unreported_usage(self) -> None:
+        """Count the calls no result reported, as a run that ended without one leaves them."""
+        if not self._calls:
+            return
+        usage = self._summed_calls()
+        self._emit(
+            "usage",
+            "",
+            {
+                "model": self._request.model,
+                "input_tokens": usage["input_tokens"],
+                "fresh_input_tokens": usage["input_tokens"],
+                "output_tokens": None,
+                "cache_read_tokens": usage["cache_read_input_tokens"],
+                "cache_write_tokens": usage["cache_creation_input_tokens"],
+                "cost": None,
+                "billing": {},
+                "calls": len(self._calls),
+                "incomplete": True,
+            },
+        )
+        self._calls.clear()
+
+    def _summed_calls(self) -> dict[str, int]:
+        """The input tokens of the calls since the last result, summed."""
+        return {key: sum(call.get(key) or 0 for call in self._calls.values()) for key in INPUT_KEYS}
 
     def _emit(self, kind: AgentEventKind, text: str, data: dict[str, Any]) -> None:
         self._log.emit(AgentEvent(kind=kind, text=text, data=data))
@@ -392,20 +456,23 @@ class ClaudeIntelligence:
                 remedy='Use the copilot agent provider (agent_provider="copilot", --agent-provider copilot), or '
                 "leave the MCP servers out.",
             )
-        client = ClaudeSDKClient(options=claude_options(request))
+        # The same filter added again is not added twice.
+        logging.getLogger(SDK_READER_LOGGER).addFilter(without_placeholder_failure)
+        stderr: deque[str] = deque(maxlen=STDERR_LINES)
+        client = ClaudeSDKClient(options=claude_options(request=request, stderr_line=kept(tail=stderr)))
         try:
             await client.connect()
         except Exception as error:
             with contextlib.suppress(Exception):
                 await client.disconnect()
             raise _unavailable(error) from error
-        run = ClaudeRun(client, request)
+        run = ClaudeRun(client=client, request=request, stderr=stderr)
         await run.running()
         return run
 
 
-def claude_options(request: AgentRequest) -> ClaudeAgentOptions:
-    """The options one run's Claude Code process starts with."""
+def claude_options(request: AgentRequest, stderr_line: Callable[[str], None]) -> ClaudeAgentOptions:
+    """The options one run's Claude Code process starts with, each line of its stderr going to `stderr_line`."""
     if request.workspace is not None:
         cwd = request.workspace.path.resolve()
     else:
@@ -424,9 +491,10 @@ def claude_options(request: AgentRequest) -> ClaudeAgentOptions:
         # Keeps the caller's CLAUDE.md, settings, and plugins out of the run.
         setting_sources=[],
         env=dict(TELEMETRY_OFF),
+        # Without a callback the SDK leaves stderr unread and reports a failed process with no word of why.
+        stderr=stderr_line,
     )
-    if (path := agent_path(request)) is not None:
-        options.env["PATH"] = path
+    options.env.update(agent_environment(request))
     if request.session_directory is not None:
         options.session_store = FolderSessionStore(request.session_directory)
         options.session_store_flush = "eager"
@@ -471,6 +539,47 @@ def skills_plugin(skill_directories: list[Path]) -> Path:
         if not plugin.is_dir():
             raise
     return plugin
+
+
+def kept(tail: deque[str]) -> Callable[[str], None]:
+    """A stderr callback that keeps each line in `tail` and passes it on, timed, to this process's stderr."""
+
+    def keep(line: str) -> None:
+        tail.append(line)
+        sys.stderr.write(f"{datetime.now(UTC).isoformat()} claude: {line}\n")
+
+    return keep
+
+
+def without_placeholder_failure(record: logging.LogRecord) -> bool:
+    """Whether an SDK log record is other than its line for a failed Claude Code process, which a run reports itself."""
+    message = record.getMessage()
+    return not (message.startswith(SDK_FAILURE_PREFIX) and message.endswith(SDK_STDERR_PLACEHOLDER))
+
+
+async def failure_text(error: Exception, stderr: deque[str]) -> str:
+    """Why a run failed; for a Claude Code process that exited, how it did and the end of what it printed."""
+    # The SDK's ProcessError carries placeholder text instead of the process's stderr; a ResultError says why itself.
+    if not isinstance(error, ProcessError) or isinstance(error, ResultError):
+        return f"{type(error).__name__}: {error}"
+    exited = f"Claude Code exited with code {error.exit_code}"
+    if error.exit_code is not None and error.exit_code < 0 and os.name == "posix":
+        with contextlib.suppress(ValueError):
+            exited += f" ({signal.Signals(-error.exit_code).name})"
+    await quiet(stderr=stderr)
+    lines = list(stderr)
+    if not lines:
+        return f"{type(error).__name__}: {exited} and printed nothing on stderr."
+    return f"{type(error).__name__}: {exited}; the end of its stderr:\n" + "\n".join(lines)
+
+
+async def quiet(stderr: deque[str]) -> None:
+    """Return once no line reaches `stderr` for `STDERR_QUIET_SECONDS`, or after `STDERR_QUIET_ATTEMPTS` such waits."""
+    for _ in range(STDERR_QUIET_ATTEMPTS):
+        lines = list(stderr)
+        await asyncio.sleep(STDERR_QUIET_SECONDS)
+        if list(stderr) == lines:
+            return
 
 
 def describe(result: ResultMessage) -> str:

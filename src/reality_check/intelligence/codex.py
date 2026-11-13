@@ -34,7 +34,7 @@ from openai_codex.types import (
 )
 
 from reality_check.intelligence.events import EventLog, fresh_input
-from reality_check.intelligence.interface import agent_path, state_directory
+from reality_check.intelligence.interface import agent_environment, state_directory
 from reality_check.intelligence.schemas import AgentEvent, AgentEventKind, AgentRequest, AgentResult, Steering
 from reality_check.intelligence.submission import MAX_INVALID_SUBMISSIONS, resubmit_prompt, submission_problem
 from reality_check.schemas import RealityCheckError
@@ -424,8 +424,7 @@ class CodexIntelligence:
 
 def codex_config(request: AgentRequest) -> CodexConfig:
     """The configuration one run's Codex runtime starts with."""
-    path = agent_path(request)
-    return CodexConfig(config_overrides=TELEMETRY_OFF, env=None if path is None else {"PATH": path})
+    return CodexConfig(config_overrides=TELEMETRY_OFF, env=agent_environment(request) or None)
 
 
 def workspace(request: AgentRequest) -> Path:

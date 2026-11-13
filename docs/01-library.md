@@ -63,15 +63,20 @@ Both raise `check-not-found`, `check-not-running` when the check has ended, and 
 
 ```
 started     the check began; its check_id, directory, and the whole request: the arguments, the process, the AgentRequest,
-            and files: the path of events.jsonl, report.md, and, when detached, process.log, each with when to read it
+            and files: the path of events.jsonl, report.md, cleanup.json, and, when detached, process.log, each with when
+            to read it
 progress    what the agent is doing, in its words
 reasoning   what the agent thought, when the model thinks
 tool        a tool the agent called, or its result, by data.phase; text is the name and arguments, or the result, whole
-usage       one model call's tokens, with fresh_input_tokens, and its billing when the agent provider reports one
+usage       model calls' tokens, with fresh_input_tokens, `calls` when more than one, and billing when the agent provider
+            reports one; `incomplete` when the agent stopped before reporting all of it
 steered     a steering message was delivered, or `error` says why not; `origin` says who sent it
 finished    the CheckResult
-failed      a RealityCheckError, with its code and remedy
+failed      a RealityCheckError, with its code and remedy; for `agent-failed`, also the agent's last_message, session_id,
+            evidence, evidence_files, and next
 ```
+
+`finished` and `failed` name `cleanup.json` when the check wrote one.
 
 `brief(event, truncate=True)` in `schemas.py` is the short form the CLI prints and `read_check_activity` returns. A `usage` event has none, so it is None. The rest leave out the `started` event's `agent_request.initial_message` and a `tool` event's `arguments`, `result`, and `detailed_result`, and cut every other string longer than 500 characters, but the `finished` event's report, so it ends with where it is whole: `...[cut at 500 of 3,319 chars; full: line 64 of events.jsonl]`. With `truncate` False, only a `usage` event is left out.
 
@@ -102,6 +107,7 @@ CheckResult
   usage: CheckUsage
     model_calls, fresh_input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens
     billing: what the agent provider bills, by unit such as USD or AIU; empty when it reports none
+    incomplete: some calls were counted without all their tokens, since the agent stopped before reporting them
 ```
 
 `fresh_input_tokens` is input read from no cache, counted the same way for every agent provider; the `input_tokens` of a `usage` event is the agent provider's own count, which may include cached tokens.
@@ -130,7 +136,13 @@ broader check of those parts with `resume`; they do not authorize actions outsid
   evidence/      what the agent recorded; report.md refers to each file relative to the check's directory
   steer/, cancel what other processes write for the running check
   process.log    what a detached check's process printed
+  cleanup.json   what the agent left running when it ended, its processes and browser sessions, and what the check
+                 did about it, and what could not be cleaned up; written only when there is any
 ```
+
+A failed agent leaves no `report.md`, since later checks read that file as a finished check's report.
+
+A checks directory with no `.gitignore` that holds nothing but checks gets one that ignores everything in it, since a check keeps the agent's commands and their output word for word, which can include secrets. One holding anything else is left as it is.
 
 ## Read check activity
 
@@ -228,15 +240,16 @@ With no components named, it installs every one in `COMPONENTS` this machine sup
 
 The check runs the way a sub-agent does: the agent provider's harness as it ships, with its built-in tools, and a short prompt made from a template. Reality Check adds only:
 
-- The prompt. The template fills in the request, the target, the paths of the files the request names, the check's `evidence/` directory, the previous checks' directories, whether computer use and the browser are enabled, `ask_first`, and `keep_running`. It says what the report, the agent's final message, must cover, not how to do the work.
+- The prompt. The template fills in the request, the target, the paths of the files the request names, the check's `evidence/` directory, the previous checks' directories, whether computer use and the browser are enabled, the machine's CPUs, free memory, and room for more processes and threads, `ask_first`, and `keep_running`. It says what the report, the agent's final message, must cover, not how to do the work.
 - Skills: the ones in [Skills for checking software](#skills-for-checking-software), passed as skill directories, so the agent loads one only when the task needs it.
 - Digital Twin Universe: its CLI, by the path in this environment, and its skill. The agent uses it to launch a universe, to work in one the caller named, and to destroy what it launched, unless `keep_running` is set.
 - Computer use: when `install` has run and the desktop allows it, the check starts the cua-driver daemon and gives the agent a command that runs cua-driver and the using-computer-use skill. When cua-driver is not installed, the prompt gives the agent `install --component computer-use` and the command it will run through, and the check makes computer use ready as soon as the install is there. When it cannot be used for any other reason, the prompt says why and what enables it, and `ask_first` decides whether the agent stops. A daemon the check started is stopped when the last check using it ends; one the user started is left running.
-- Browser: the agent gets a command that runs agent-browser with its skills and, on Linux when `certutil` is there, this machine's certificate authorities, the using-browser skill, and a session named for the check. When agent-browser is not installed, the prompt gives the agent `install --component browser` instead, and the same command works once the install is there. When it cannot run here, the prompt says why. The check closes its sessions when it ends.
+- Browser: the agent gets a command that runs agent-browser with its skills and, on Linux when `certutil` is there, this machine's certificate authorities, the using-browser skill, and a session named for the check. When agent-browser is not installed, the prompt gives the agent `install --component browser` instead, and the same command works once the install is there. When it cannot run here, the prompt says why. The check closes its sessions when it ends, by name and by the daemons its agent started, and stops a daemon whose session does not close.
 
 Everything else, such as a browser on another machine or a tester the caller installed, the agent finds and uses on its own. When the agent needs more from Reality Check, it is added here, and not built in ahead of need.
 
 Reality Check never destroys what it did not start. The agent reports anything it started and did not stop, with the command that stops it.
+Every process the agent starts carries `REALITY_CHECK_ID`, the check's id. When the agent ends, however it ends, the check finds this user's processes that carry it, with what runs under them, and records them in `cleanup.json`. Unless `keep_running` is set, it stops them. It never touches its own process or its parents, the shared cua-driver daemon, or another running check and what runs under it.
 
 ## Skills for checking software
 
@@ -275,7 +288,7 @@ class AgentRun(Protocol):
 ```
 
 `preflight` raises `RealityCheckError` naming what to configure when the implementation cannot run.
-`start` starts one agent and returns once it runs, and may raise `RealityCheckError` for a request its implementation cannot run. `AgentRequest` holds the initial message, model, optional reasoning effort, optional workspace, optional output schema, the MCP servers and skill directories to add, the `images` shown with the initial message, `resume`, and `session_directory`, where the agent provider keeps the session when set. `AgentResult` holds the agent's final message, the structured output, or the error, and the `session_id`.
+`start` starts one agent and returns once it runs, and may raise `RealityCheckError` for a request its implementation cannot run. `AgentRequest` holds the initial message, model, optional reasoning effort, optional workspace, optional output schema, the MCP servers and skill directories to add, the `images` shown with the initial message, `resume`, `session_directory`, where the agent provider keeps the session when set, and `path_directories` and `environment`, which the agent's processes get ahead of PATH and over this process's environment. `AgentResult` holds the agent's final message, the structured output, or the error, and the `session_id`.
 With an output schema, the agent answers in that schema: through a `submit` tool on `copilot` and `amplifier-agent`, and through the SDK's own structured output on `codex` and `claude`. A missing or invalid answer is sent back to the agent twice at most; after that the result's `error` says why.
 The agent provider's built-in tools are always kept. Every implementation runs with its agent provider's telemetry turned off, approves every tool call, and keeps the caller's instructions out where its SDK allows.
 Setting `AgentRequest.resume` to an earlier `AgentResult.session_id` continues that session instead of starting a fresh one, so the agent keeps what it learned. Every implementation resumes across processes.

@@ -210,6 +210,12 @@ export function DetailsPage({ check }: { check: Check }) {
             ))}
           </dl>
         )}
+        {usage?.incomplete && (
+          <p className="text-ink-muted">
+            Some usage was not counted, since the agent stopped before reporting
+            it.
+          </p>
+        )}
       </Section>
       {(resumes || previous.length > 0 || check.continuedBy.length > 0) && (
         <Section title="Related checks">
