@@ -211,6 +211,9 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Callable[..., FakeWorld]:
     return install
 
 
+MARKER = {"REALITY_CHECK_ID": "20260101-000000-abcdef"}
+
+
 def request(workspace: Path | None = None, **fields: Any) -> AgentRequest:
     return AgentRequest(
         initial_message="Do the work.",
@@ -264,17 +267,19 @@ async def test_a_thread_gets_the_workspace_trusted_telemetry_off_and_no_agents_m
     assert fake.closed == 1
 
 
-async def test_path_directories_go_first_on_the_runtime_s_path(
+async def test_path_directories_go_first_on_the_runtime_s_path_beside_the_request_s_variables(
     world: Callable[..., FakeWorld], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     fake = world(answers("done"))
     monkeypatch.setenv("PATH", "/usr/bin")
 
-    await (await CodexIntelligence().start(request(tmp_path, path_directories=[tmp_path / "shim"]))).result()
+    await (
+        await CodexIntelligence().start(request(tmp_path, path_directories=[tmp_path / "shim"], environment=MARKER))
+    ).result()
 
     [config] = fake.configs
     assert config is not None
-    assert config.env == {"PATH": f"{tmp_path / 'shim'}{os.pathsep}/usr/bin"}
+    assert config.env == {"PATH": f"{tmp_path / 'shim'}{os.pathsep}/usr/bin", **MARKER}
 
 
 async def test_without_a_workspace_the_agent_works_in_the_state_directory_and_no_effort_sends_none(

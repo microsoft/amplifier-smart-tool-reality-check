@@ -26,7 +26,7 @@ import yaml
 
 from reality_check import lib
 from reality_check.capabilities.check_software import check
-from reality_check.capabilities.check_software.record import process_started
+from reality_check.capabilities.check_software.record import CHECKS_GITIGNORE, process_started
 from reality_check.cli import app
 from reality_check.intelligence import interface
 from reality_check.intelligence.schemas import AgentRequest, AgentResult
@@ -180,6 +180,30 @@ async def test_the_prompt_says_uv_is_missing_only_when_it_is(
         prompts.append(fake.runs[0].request.initial_message)
 
     assert prompts == [f"[{check.UV_MISSING}]", "[]"]
+
+
+async def test_a_checks_directory_holding_only_checks_gets_a_gitignore_that_keeps_them_out_of_git(
+    tmp_path: Path,
+) -> None:
+    new, existing, kept, shared = (tmp_path / name for name in ["new", "existing", "kept", "shared"])
+    first = await lib.check_software(REQUEST, checks_directory=existing, intelligence=FakeIntelligence(finishes()))
+    await first.result()
+    (existing / ".gitignore").unlink()
+    (existing / ".DS_Store").write_bytes(b"Finder")
+    kept.mkdir()
+    (kept / ".gitignore").write_text("/*\n", encoding="utf-8")
+    shared.mkdir()
+    (shared / "README.md").write_text("Notes.\n", encoding="utf-8")
+
+    for root in [new, existing, kept, shared]:
+        await (
+            await lib.check_software(REQUEST, checks_directory=root, intelligence=FakeIntelligence(finishes()))
+        ).result()
+
+    assert (new / ".gitignore").read_text(encoding="utf-8") == CHECKS_GITIGNORE
+    assert (existing / ".gitignore").read_text(encoding="utf-8") == CHECKS_GITIGNORE
+    assert (kept / ".gitignore").read_text(encoding="utf-8") == "/*\n"
+    assert not (shared / ".gitignore").exists()
 
 
 async def test_a_new_and_a_resumed_check_s_prompt_state_what_the_machine_has_free(
@@ -394,6 +418,58 @@ async def test_a_check_sums_its_usage_the_same_way_for_every_agent_provider(tmp_
     assert result.elapsed_seconds >= 0
     record = CheckRecord.model_validate_json((run.directory / "check.json").read_text(encoding="utf-8"))
     assert record.usage == result.usage
+
+
+async def test_usage_that_counts_several_calls_or_is_incomplete_adds_up_so(tmp_path: Path) -> None:
+    async def script(run: FakeRun) -> AgentResult:
+        run.emit("usage", data={"fresh_input_tokens": 10, "calls": 3})
+        run.emit("usage", data={"fresh_input_tokens": 5, "calls": 2, "incomplete": True})
+        run.emit("usage", data={"output_tokens": 1})
+        return AgentResult(text="# Report", session_id=SESSION)
+
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=FakeIntelligence(script))
+    result = await run.result()
+
+    assert result.usage == CheckUsage(model_calls=6, fresh_input_tokens=15, output_tokens=1, incomplete=True)
+
+
+async def test_an_agent_that_fails_ends_the_check_failed_with_what_it_had_and_no_report(tmp_path: Path) -> None:
+    async def script(run: FakeRun) -> AgentResult:
+        [directory] = [path for path in tmp_path.iterdir() if (path / "check.json").is_file()]
+        (directory / "evidence" / "shots").mkdir(parents=True)
+        (directory / "evidence" / "home.png").write_bytes(b"png")
+        (directory / "evidence" / "shots" / "menu.png").write_bytes(b"png")
+        return AgentResult(text=f"  {'x' * 600}  ", error="ProcessError: Claude Code exited", session_id=SESSION)
+
+    run = await lib.check_software(REQUEST, checks_directory=tmp_path, intelligence=FakeIntelligence(script))
+    with pytest.raises(RealityCheckError) as failure:
+        await run.result()
+    failed = (await collect(run))[-1]
+
+    next_command = (
+        f'reality-check check-software --resume {run.check_id} --request "<your answer>" --checks-directory {tmp_path}'
+    )
+    evidence = run.directory / "evidence"
+    assert failure.value.code == "agent-failed"
+    assert failure.value.message == (
+        f"The agent running check {run.check_id} failed: ProcessError: Claude Code exited\n\n"
+        f"Its last message: {'x' * 500}..."
+    )
+    assert f"Its evidence so far is 2 files in {evidence}." in failure.value.remedy
+    assert f"go on with `{next_command}`, which resumes its session {SESSION}" in failure.value.remedy
+    assert failed.kind == "failed"
+    assert failed.data == {
+        "code": "agent-failed",
+        "message": failure.value.message,
+        "remedy": failure.value.remedy,
+        "last_message": f"{'x' * 500}...",
+        "session_id": SESSION,
+        "evidence": str(evidence),
+        "evidence_files": 2,
+        "next": next_command,
+    }
+    assert not (run.directory / "report.md").exists()
+    assert (record_of(run).status, record_of(run).session_id) == ("failed", SESSION)
 
 
 @pytest.mark.parametrize(("script", "exit_code", "status"), [(finishes(), 0, "done"), (fails, 1, None)])

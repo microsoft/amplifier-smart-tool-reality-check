@@ -1,6 +1,9 @@
 """Gives each check's agent agent-browser by name, says in the prompt how to use it, and closes its sessions."""
 
+from collections.abc import Generator
+import contextlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -8,15 +11,17 @@ from typing import Any
 
 from fakes import FakeIntelligence, FakeRun, fails, finishes, works_forever
 from fakes import Unavailable as UnstartableAgent
+import psutil
 import pytest
 
 from reality_check import lib
 from reality_check.capabilities.browser import install, prepare, shim
-from reality_check.capabilities.browser.prepare import Browser, NotInstalled, prepare_browser
+from reality_check.capabilities.browser.prepare import Browser, BrowserSession, NotInstalled, prepare_browser
 from reality_check.capabilities.browser.shim import write_shim
 from reality_check.capabilities.browser.target import Target, Unavailable
 from reality_check.capabilities.check_software import check
 from reality_check.intelligence.schemas import AgentResult
+from reality_check.processes import CHECK_ID_VARIABLE, Found
 from reality_check.schemas import RealityCheckError
 
 LINUX = Target("linux-x64")
@@ -141,7 +146,7 @@ def test_the_shim_gives_agent_browser_a_short_socket_folder_when_its_own_is_too_
     assert f"AGENT_BROWSER_SOCKET_DIR={tmp_path / 'rc-ab'}" in output
 
 
-def test_closing_sessions_without_a_usable_socket_folder_does_nothing(
+def test_closing_sessions_without_a_usable_socket_folder_says_so(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     executable = tmp_path / "agent-browser"
@@ -152,7 +157,11 @@ def test_closing_sessions_without_a_usable_socket_folder_does_nothing(
 
     monkeypatch.setattr(prepare, "run_agent_browser", refused)
 
-    prepare.close_sessions(executable, "rc-a")
+    closed = prepare.close_sessions(executable=executable, check_id="a")
+
+    assert closed.sessions == []
+    [problem] = closed.problems
+    assert problem.startswith("Listing agent-browser sessions failed: RealityCheckError")
 
 
 class Browsing:
@@ -189,7 +198,7 @@ class Browsing:
         if arguments == ["session", "list", "--json"]:
             if "list" in self.failing:
                 raise OSError("daemon gone")
-            sessions = ["rc-20200101-000000-aaaaaa", "default"]
+            sessions = ["rc-20200101-000000-aaaaaa", "default", "shop"]
             for check_id in self.check_ids:
                 sessions += [f"rc-{check_id}-admin", f"rc-{check_id}", f"rc-{check_id}0"]
             return subprocess.CompletedProcess(
@@ -217,6 +226,13 @@ async def test_the_prompt_gives_the_session_and_the_check_closes_only_its_own_se
     assert COMMAND.parent in fake.runs[0].request.path_directories
     assert browsing.closed == [f"rc-{run.check_id}-admin", f"rc-{run.check_id}"]
     assert all(arguments[2:] == ["close"] for arguments in browsing.calls[1:])
+    cleanup = json.loads((run.directory / "cleanup.json").read_text(encoding="utf-8"))
+    assert cleanup["browser_sessions"] == [
+        {"name": f"rc-{run.check_id}-admin", "outcome": "closed"},
+        {"name": f"rc-{run.check_id}", "outcome": "closed"},
+    ]
+    assert cleanup["processes"] == []
+    assert cleanup["problems"] == []
 
 
 async def test_without_an_install_the_prompt_says_how_to_install_and_which_session_to_pass(
@@ -273,6 +289,22 @@ async def test_a_check_closes_its_sessions_however_it_ends(monkeypatch: pytest.M
     assert sorted(browsing.closed) == sorted(expected)
 
 
+async def test_a_check_that_keeps_running_what_it_starts_still_closes_and_records_its_sessions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    browsing = Browsing(monkeypatch, tmp_path, "installed")
+
+    run = await lib.check_software(
+        "a", checks_directory=tmp_path, keep_running=True, intelligence=FakeIntelligence(finishes())
+    )
+    await run.result()
+
+    assert browsing.closed == [f"rc-{run.check_id}-admin", f"rc-{run.check_id}"]
+    cleanup = json.loads((run.directory / "cleanup.json").read_text(encoding="utf-8"))
+    assert cleanup["keep_running"] is True
+    assert [entry["outcome"] for entry in cleanup["browser_sessions"]] == ["closed", "closed"]
+
+
 @pytest.mark.parametrize("failing", ["list", "close"])
 async def test_sessions_that_fail_to_close_do_not_fail_the_check(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failing: str
@@ -284,3 +316,109 @@ async def test_sessions_that_fail_to_close_do_not_fail_the_check(
 
     assert (await run.result()).status == "done"
     assert len(browsing.closed) == (2 if failing == "close" else 0)
+
+
+@pytest.fixture
+def daemons() -> Generator[list[subprocess.Popen[bytes]]]:
+    """agent-browser daemons a check's agent starts, stood in for by sleepers; each is ended when the test ends."""
+    started: list[subprocess.Popen[bytes]] = []
+    yield started
+    for daemon in started:
+        with contextlib.suppress(OSError):
+            daemon.kill()
+        daemon.wait()
+
+
+def starts_a_daemon(daemons: list[subprocess.Popen[bytes]]) -> Any:
+    """An agent that opens a session named for the page rather than the check, as agent-browser's daemon does."""
+
+    async def script(run: FakeRun) -> AgentResult:
+        environment = {
+            **os.environ,
+            **run.request.environment,
+            "AGENT_BROWSER_DAEMON": "1",
+            "AGENT_BROWSER_SESSION": "shop",
+        }
+        daemons.append(subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], env=environment))
+        return await finishes()(run)
+
+    return script
+
+
+async def test_a_session_whose_daemon_the_agent_started_is_closed_whatever_its_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, daemons: list[subprocess.Popen[bytes]]
+) -> None:
+    browsing = Browsing(monkeypatch, tmp_path, "installed")
+
+    run = await lib.check_software(
+        "a", checks_directory=tmp_path, intelligence=FakeIntelligence(starts_a_daemon(daemons))
+    )
+    await run.result()
+
+    assert sorted(browsing.closed) == sorted([f"rc-{run.check_id}-admin", f"rc-{run.check_id}", "shop"])
+    # Closing it here does not end the stand-in, so the check stops it as it does anything else its agent left.
+    cleanup = json.loads((run.directory / "cleanup.json").read_text(encoding="utf-8"))
+    assert [(entry["pid"], entry["outcome"]) for entry in cleanup["processes"]] == [(daemons[0].pid, "stopped")]
+    assert {"name": "shop", "outcome": "closed"} in cleanup["browser_sessions"]
+
+
+@pytest.mark.parametrize("failing", ["list", "close"])
+async def test_a_daemon_whose_session_does_not_close_is_stopped_and_the_problem_recorded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, daemons: list[subprocess.Popen[bytes]], failing: str
+) -> None:
+    browsing = Browsing(monkeypatch, tmp_path, "installed")
+    browsing.failing.add(failing)
+
+    run = await lib.check_software(
+        "a", checks_directory=tmp_path, intelligence=FakeIntelligence(starts_a_daemon(daemons))
+    )
+    result = await run.result()
+
+    assert result.status == "done"
+    assert daemons[0].poll() is not None
+    cleanup = json.loads((run.directory / "cleanup.json").read_text(encoding="utf-8"))
+    stopped = f"agent-browser session shop was not closed; its daemon, process {daemons[0].pid}: stopped."
+    assert stopped in cleanup["problems"]
+    sessions = {entry["name"]: entry["outcome"] for entry in cleanup["browser_sessions"]}
+    if failing == "list":
+        assert "Listing agent-browser sessions failed: OSError: daemon gone" in cleanup["problems"]
+        assert sessions == {"shop": "stopped"}
+    else:
+        assert f"Closing agent-browser session rc-{run.check_id} failed: TimeoutExpired: " in "\n".join(
+            cleanup["problems"]
+        )
+        assert sessions[f"rc-{run.check_id}"].startswith("not closed: TimeoutExpired: ")
+        assert sessions["shop"] == "stopped"
+    assert cleanup["processes"] == []
+
+
+def test_a_daemon_that_cannot_be_read_is_a_problem_and_the_others_are_still_stopped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, daemons: list[subprocess.Popen[bytes]]
+) -> None:
+    check_id = "20260101-000000-abcdef"
+    for session in ["shop", "admin"]:
+        environment = {
+            **os.environ,
+            CHECK_ID_VARIABLE: check_id,
+            "AGENT_BROWSER_DAEMON": "1",
+            "AGENT_BROWSER_SESSION": session,
+        }
+        daemons.append(subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], env=environment))
+    unreadable, readable = daemons
+    reads = prepare.found_process
+
+    def found_process(process: psutil.Process) -> Found:
+        if process.pid == unreadable.pid:
+            raise psutil.AccessDenied(pid=process.pid)
+        return reads(process)
+
+    monkeypatch.setattr(prepare, "found_process", found_process)
+
+    closed = prepare.close_sessions(executable=tmp_path / "agent-browser", check_id=check_id)
+
+    assert closed.sessions == [BrowserSession(name="admin", outcome="stopped")]
+    assert readable.poll() is not None
+    assert unreadable.poll() is None
+    assert closed.problems[0].startswith(
+        f"The daemon of agent-browser session shop, process {unreadable.pid}, could not be read: AccessDenied"
+    )

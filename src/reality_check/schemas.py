@@ -234,6 +234,9 @@ class CheckUsage(BaseModel):
         default_factory=dict,
         description="What the agent provider bills, by unit such as USD or AIU; empty when it reports none",
     )
+    incomplete: bool = Field(
+        default=False, description="True when the agent stopped before reporting some of what it used"
+    )
 
 
 class CheckResult(BaseModel):

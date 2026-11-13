@@ -66,6 +66,16 @@ def newest_records(checks_directory: Path, count: int) -> list[CheckRecord]:
     return sorted(_records(checks_directory), key=lambda record: record.started_at, reverse=True)[:count]
 
 
+def running_check_processes() -> set[int]:
+    """The processes running a check now, in every registered project."""
+    return {
+        record.pid
+        for project in registered_projects()
+        for record in _records(project.checks_directory)
+        if record.pid is not None and check_state(record) == "running"
+    }
+
+
 def read_check(check_id: str, checks_directory: Path) -> CheckDetail:
     """One check as it stands: its record, its report with portable evidence links, and the evidence it has so far."""
     root = checks_directory.resolve()

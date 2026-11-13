@@ -68,7 +68,9 @@ async def _run(request: check.DetachedCheckRequest, intelligence: Intelligence |
     with _stopped_by_signals(run):
         try:
             result = await run.result()
-        except RealityCheckError:
+        except RealityCheckError as error:
+            # Its stderr is the check's process log by now, beside its events.
+            sys.stderr.write(f"{error.code}: {error}\n")
             return 1
     return 0 if result.status == "done" else 1
 

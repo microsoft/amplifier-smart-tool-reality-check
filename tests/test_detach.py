@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ from reality_check import lib
 from reality_check.capabilities.check_software import check
 from reality_check.capabilities.check_software.record import read_atomically
 from reality_check.cli import app
+from reality_check.processes import CHECK_ID_VARIABLE
 from reality_check.schemas import CheckRecord, RealityCheckError
 
 # A detached check starts a Python process of its own, which takes a while to import the library.
@@ -97,6 +99,22 @@ async def test_a_detached_handle_cancels_its_check(detached: Callable[[str], Non
     assert (await run.result()).status == "cancelled"
 
 
+async def test_a_detached_check_started_by_another_check_s_agent_does_not_carry_that_check_s_variable(
+    detached: Callable[[str], None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    detached("works-forever")
+    monkeypatch.setenv(CHECK_ID_VARIABLE, "20260101-000000-abcdef")
+    run = await lib.check_software("Check the page", detach=True)
+    pid = record_of(run).pid
+    assert pid is not None
+
+    environment = psutil.Process(pid).environ()
+    await asyncio.wait_for(run.cancel(), DETACHED_TIMEOUT_SECONDS)
+
+    assert CHECK_ID_VARIABLE not in environment
+    assert "PATH" in environment
+
+
 @pytest.mark.parametrize(
     ("name", "code"), [("not-configured", "gh-not-signed-in"), ("unavailable", "model-not-available")]
 )
@@ -109,6 +127,25 @@ async def test_a_detached_check_that_cannot_start_raises_what_stopped_it(
         await lib.check_software("Check the page", detach=True)
 
     assert failure.value.code == code
+
+
+async def test_a_detached_check_whose_agent_fails_writes_why_to_its_process_log(
+    detached: Callable[[str], None],
+) -> None:
+    detached("fails")
+    run = await lib.check_software("Check the page", detach=True)
+    pid = record_of(run).pid
+    assert pid is not None
+
+    with pytest.raises(RealityCheckError) as failure:
+        await asyncio.wait_for(run.result(), DETACHED_TIMEOUT_SECONDS)
+    # The process writes the error after its `failed` event, so the log is whole once it is gone.
+    with contextlib.suppress(psutil.NoSuchProcess):
+        await asyncio.to_thread(psutil.Process(pid).wait, DETACHED_TIMEOUT_SECONDS)
+
+    assert failure.value.code == "agent-failed"
+    log = (run.directory / "process.log").read_text(encoding="utf-8")
+    assert f"agent-failed: {failure.value}" in log
 
 
 async def test_a_killed_detached_check_has_crashed_and_names_its_process_log(detached: Callable[[str], None]) -> None:
@@ -143,6 +180,7 @@ def test_the_cli_detached_prints_the_started_event_and_exits_0_or_1_with_why_it_
     assert {name: file["path"] for name, file in line["data"]["files"].items()} == {
         "events": str(directory / "events.jsonl"),
         "report": str(directory / "report.md"),
+        "cleanup": str(directory / "cleanup.json"),
         "process_log": str(directory / "process.log"),
     }
     # main() prints a RealityCheckError to stderr and exits 1; the runner calls the app beneath it.

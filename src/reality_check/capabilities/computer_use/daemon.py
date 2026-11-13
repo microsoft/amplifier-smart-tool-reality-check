@@ -81,6 +81,12 @@ def release(check_id: str, target: Target) -> None:
             _stop(target, started)
 
 
+def started_pid() -> int | None:
+    """The daemon's pid when a check started it and it is known; checks share it, so no one check's clean-up stops it."""
+    started = _started()
+    return started.pid if started is not None else None
+
+
 def _status(target: Target, executable: Path) -> int | None:
     """The running daemon's pid, 0 when it runs and gives none, or None when none runs."""
     completed = run_driver(target, executable, ["status"], CALL_TIMEOUT_SECONDS)

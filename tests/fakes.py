@@ -149,4 +149,6 @@ def intelligence(name: str) -> FakeIntelligence:
             return FakeIntelligence(prints_and_waits_for_steering)
         case "works-forever":
             return FakeIntelligence(works_forever)
+        case "fails":
+            return FakeIntelligence(fails)
     return FakeIntelligence(waits_for_steering)

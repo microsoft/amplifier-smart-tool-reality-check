@@ -1,9 +1,10 @@
 """Check software: an agent uses the software as a user does, gathers evidence, and writes a report."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 import contextlib
 from datetime import UTC, datetime
+import functools
 import hashlib
 import json
 import os
@@ -22,10 +23,11 @@ import platformdirs
 from pydantic import BaseModel
 import yaml
 
-from reality_check.capabilities.browser.prepare import Browser, prepare_browser
+from reality_check.capabilities.browser.prepare import Browser, BrowserSession, prepare_browser
 from reality_check.capabilities.browser.prepare import NotInstalled as BrowserNotInstalled
 from reality_check.capabilities.browser.target import Unavailable as BrowserUnavailable
 from reality_check.capabilities.check_software.checks import newest_records
+from reality_check.capabilities.check_software.cleanup import clean_up
 from reality_check.capabilities.check_software.constants import (
     ASK_FIRST,
     BROWSER_ENABLED,
@@ -50,6 +52,7 @@ from reality_check.capabilities.check_software.constants import (
 from reality_check.capabilities.check_software.intelligence_models import require_allowed
 from reality_check.capabilities.check_software.machine import machine_text
 from reality_check.capabilities.check_software.record import (
+    CLEANUP,
     EVENTS,
     EVIDENCE,
     PROCESS_LOG,
@@ -58,6 +61,7 @@ from reality_check.capabilities.check_software.record import (
     alive,
     check_state,
     load_record,
+    make_checks_directory,
     process_started,
     read_events,
     write_record,
@@ -68,6 +72,7 @@ from reality_check.capabilities.computer_use.target import Unavailable
 from reality_check.core.skill import DISTRIBUTION, skill_directory
 from reality_check.intelligence.interface import AgentRun, Intelligence, resolve_agent_provider, select_intelligence
 from reality_check.intelligence.schemas import IMAGE_MEDIA_TYPES, AgentEvent, AgentRequest, AgentResult, HostWorkspace
+from reality_check.processes import CHECK_ID_VARIABLE, describe
 from reality_check.schemas import (
     AGENT_PROVIDERS,
     DEFAULT_CHECKS_DIRECTORY,
@@ -106,6 +111,8 @@ MAX_NAMED_FILES = 20
 MAX_RECENT_CHECKS = 5
 # Enough of a request to tell whether it asked for the same thing; the whole of it is in the check's directory.
 MAX_RECENT_REQUEST_CHARACTERS = 200
+# Enough of a failed agent's last message to tell where it stopped; the whole of it is in the check's events.
+MAX_LAST_MESSAGE_CHARACTERS = 500
 # What starts a detached check, given its request on stdin. Tests swap it for a command that fakes the agent.
 BACKGROUND_COMMAND = [sys.executable, "-m", "reality_check.capabilities.check_software.background"]
 IMAGES = "images"
@@ -202,6 +209,12 @@ class InProcessCheckRun:
         self._pending: list[tuple[str, str]] = []
         self._cancelling = False
         self._cancel_task: asyncio.Task[None] | None = None
+        # What the check had when its agent failed, which the `failed` event carries beside the error.
+        self._failure_facts: dict[str, Any] = {}
+        # What could not be cleaned up once the agent ended, and where that and what it left running are recorded.
+        self._browser_sessions: list[BrowserSession] = []
+        self._problems: list[str] = []
+        self._cleanup: Path | None = None
         started = {
             "directory": str(directory),
             **record.model_dump(mode="json", include=STARTED_FIELDS),
@@ -266,10 +279,15 @@ class InProcessCheckRun:
         except RealityCheckError as error:
             if self._record.status == "running":
                 self._end("failed", None)
-            data: dict[str, Any] = {"code": error.code, "message": error.message, "remedy": error.remedy}
+            data: dict[str, Any] = {
+                "code": error.code,
+                "message": error.message,
+                "remedy": error.remedy,
+                **self._failure_facts,
+            }
             if isinstance(error, CheckTimeoutError):
                 data["result"] = error.result.model_dump(mode="json")
-            self._emit("failed", str(error), data)
+            self._emit("failed", f"{error}{self._cleanup_note()}", data)
             raise
         finally:
             self._appended.set()
@@ -278,7 +296,7 @@ class InProcessCheckRun:
             if self._report_path.is_file()
             else f"there is no report; resume it with `{self._next}`"
         )
-        self._emit("finished", f"Check {result.status}; {where}.", result.model_dump(mode="json"))
+        self._emit("finished", f"Check {result.status}; {where}.{self._cleanup_note()}", result.model_dump(mode="json"))
         return result
 
     async def _run(self) -> CheckResult:
@@ -311,6 +329,7 @@ class InProcessCheckRun:
                 wrap_up.cancel()
             await self._release_computer_use()
             await self._release_browser()
+            await self._clean_up()
         if timed_out:
             report = self._report(outcome.text, "it timed out")
             so_far = (
@@ -327,15 +346,44 @@ class InProcessCheckRun:
             return self._finish("cancelled", outcome.session_id, self._report(outcome.text, "it was cancelled"))
         if outcome.error is not None:
             self._end("failed", outcome.session_id)
-            log = self.directory / PROCESS_LOG
-            also = f" and {log} for what its process printed" if log.is_file() else ""
-            raise RealityCheckError(
-                code="agent-failed",
-                message=f"The agent running check {self.check_id} failed: {outcome.error}",
-                remedy=f"Read {self.directory / EVENTS} for what it did{also}; go on with `{self._next}` when its "
-                "session was kept, or start the check again.",
-            )
+            raise self._agent_failed(error=outcome.error, last_message=outcome.text)
         return self._finish("done", outcome.session_id, self._report(outcome.text, "it ended"))
+
+    def _agent_failed(self, error: str, last_message: str) -> RealityCheckError:
+        """The failure of an agent that stopped before it reported, with what the check has of its work.
+
+        No report.md is written, since that file is a finished check's report and later checks read it as one.
+        """
+        session_id = self._record.session_id
+        evidence = self.directory / EVIDENCE
+        files = sum(1 for path in evidence.rglob("*") if path.is_file()) if evidence.is_dir() else 0
+        last_message = last_message.strip()
+        if len(last_message) > MAX_LAST_MESSAGE_CHARACTERS:
+            last_message = f"{last_message[:MAX_LAST_MESSAGE_CHARACTERS].rstrip()}..."
+        self._failure_facts = {
+            "last_message": last_message,
+            "session_id": session_id,
+            "evidence": str(evidence),
+            "evidence_files": files,
+            "next": self._next,
+        }
+        message = f"The agent running check {self.check_id} failed: {error}"
+        if last_message:
+            message += f"\n\nIts last message: {last_message}"
+        log = self.directory / PROCESS_LOG
+        also = f" and {log} for what its process printed" if log.is_file() else ""
+        go_on = (
+            f"go on with `{self._next}`, which resumes its session {session_id}, or start the check again"
+            if session_id is not None
+            else "it kept no session to resume, so start the check again"
+        )
+        saved = f"{files} file" if files == 1 else f"{files} files"
+        return RealityCheckError(
+            code="agent-failed",
+            message=message,
+            remedy=f"Its evidence so far is {saved} in {evidence}. Read {self.directory / EVENTS} for what it "
+            f"did{also}; {go_on}.",
+        )
 
     async def _enable_installed_computer_use(self) -> None:
         """Make computer use ready once the agent has installed it during the check."""
@@ -353,14 +401,42 @@ class InProcessCheckRun:
             with contextlib.suppress(Exception):
                 self._computer_use = await self._preparing
         if isinstance(self._computer_use, ComputerUse):
-            with contextlib.suppress(Exception):
-                await asyncio.to_thread(self._computer_use.release)
+            try:
+                await _off_the_loop(self._computer_use.release)
+            except Exception as error:
+                self._problems.append(f"Letting go of computer use failed: {describe(error)}")
 
     async def _release_browser(self) -> None:
         """Close the check's browser sessions however the check ends; a failure to close one never fails the check."""
         if isinstance(self._browser, Browser | BrowserNotInstalled):
-            with contextlib.suppress(Exception):
-                await asyncio.to_thread(self._browser.release)
+            try:
+                closed = await _off_the_loop(self._browser.release)
+                self._browser_sessions = closed.sessions
+                self._problems += closed.problems
+            except Exception as error:
+                self._problems.append(f"Closing the browser sessions failed: {describe(error)}")
+
+    async def _clean_up(self) -> None:
+        """Record what the agent left running however the check ends, and stop it unless the check keeps it running."""
+        keep_running = self._record.keep_running
+        # A record that cannot be written leaves the check to end as it would have.
+        with contextlib.suppress(OSError):
+            self._cleanup = await _off_the_loop(
+                functools.partial(
+                    clean_up,
+                    directory=self.directory,
+                    check_id=self.check_id,
+                    keep_running=keep_running,
+                    browser_sessions=self._browser_sessions,
+                    problems=self._problems,
+                )
+            )
+
+    def _cleanup_note(self) -> str:
+        """Where the check's last event points for what its agent left running; empty when nothing was recorded."""
+        if self._cleanup is None:
+            return ""
+        return f" What its agent left running, and what could not be cleaned up, is in {self._cleanup}."
 
     async def _wrap_up(self, timeout_seconds: int) -> None:
         """Tell the agent how little time is left, so it reports what it has before the check stops it."""
@@ -685,6 +761,7 @@ async def _start(
     intelligence.preflight()
 
     recent = await asyncio.to_thread(newest_records, root, MAX_RECENT_CHECKS) if resumed is None else []
+    make_checks_directory(root)
     check_id, directory = _new_check_directory(root)
     copied = _copy_images(directory, sources)
     session_directory: Path | None = directory / SESSION
@@ -758,6 +835,7 @@ async def _start(
         images=copied,
         session_directory=session_directory,
         path_directories=_path_directories(computer_use, browser, uv),
+        environment={CHECK_ID_VARIABLE: check_id},
     )
     return InProcessCheckRun(
         record,
@@ -852,7 +930,11 @@ async def _detach(request: DetachedCheckRequest) -> DetachedCheckRun:
 
 def _start_process(request: DetachedCheckRequest) -> dict[str, Any]:
     """Start the process a detached check runs in, and return what it reports once its agent runs or cannot."""
-    process = detached_process(BACKGROUND_COMMAND, subprocess.PIPE, subprocess.PIPE)
+    # Without the marker of a check whose agent started this one, so that check never takes this one for its own.
+    environment = {name: value for name, value in os.environ.items() if name != CHECK_ID_VARIABLE}
+    process = detached_process(
+        command=BACKGROUND_COMMAND, stdin=subprocess.PIPE, stdout=subprocess.PIPE, environment=environment
+    )
     # It only starts the check's own process and exits; waited on here so it leaves no zombie.
     threading.Thread(target=process.wait, daemon=True).start()
     assert process.stdin is not None
@@ -903,6 +985,36 @@ def _popen(
         start_new_session=start_new_session,
         creationflags=creationflags,
     )
+
+
+async def _off_the_loop[T](function: Callable[[], T]) -> T:
+    """`function` run in a thread of its own, or on the loop when the machine has no thread to spare.
+
+    Not `asyncio.to_thread`, whose executor keeps a call it could not start a thread for, and runs it once it can.
+    """
+    loop = asyncio.get_running_loop()
+    done: asyncio.Future[T] = loop.create_future()
+
+    def settle(outcome: Callable[[], None]) -> None:
+        if not done.done():
+            outcome()
+
+    def run() -> None:
+        try:
+            result = function()
+        except BaseException as error:
+            outcome = functools.partial(done.set_exception, error)
+        else:
+            outcome = functools.partial(done.set_result, result)
+        # A loop closed in the meantime has no one left to tell.
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(settle, outcome)
+
+    try:
+        threading.Thread(target=run, daemon=True).start()
+    except RuntimeError:
+        return function()
+    return await done
 
 
 def _images(paths: list[Path]) -> list[Path]:
@@ -979,6 +1091,11 @@ def _files(directory: Path, detached: bool) -> dict[str, dict[str, str]]:
         "report": {
             "path": str(directory / REPORT),
             "use": "The check's final report, written when the check ends.",
+        },
+        "cleanup": {
+            "path": str(directory / CLEANUP),
+            "use": "What the agent left running when it ended, its processes and browser sessions, and what was done "
+            "about it, and what could not be cleaned up. Written only when there is any.",
         },
     }
     if detached:
@@ -1180,16 +1297,17 @@ def _duration(seconds: float) -> str:
 
 
 def _added(usage: CheckUsage, data: dict[str, Any]) -> CheckUsage:
-    """`usage` with one model call's `usage` event added."""
+    """`usage` with one `usage` event added, which counts one model call unless it says how many."""
     billing = dict(usage.billing)
     for unit, amount in (data.get("billing") or {}).items():
         billing[unit] = billing.get(unit, 0.0) + amount
     return CheckUsage(
-        model_calls=usage.model_calls + 1,
+        model_calls=usage.model_calls + data.get("calls", 1),
         fresh_input_tokens=usage.fresh_input_tokens + (data.get("fresh_input_tokens") or 0),
         cache_read_tokens=usage.cache_read_tokens + (data.get("cache_read_tokens") or 0),
         cache_write_tokens=usage.cache_write_tokens + (data.get("cache_write_tokens") or 0),
         output_tokens=usage.output_tokens + (data.get("output_tokens") or 0),
         reasoning_tokens=usage.reasoning_tokens + (data.get("reasoning_tokens") or 0),
         billing=billing,
+        incomplete=usage.incomplete or bool(data.get("incomplete")),
     )

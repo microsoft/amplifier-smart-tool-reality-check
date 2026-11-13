@@ -37,7 +37,7 @@ from copilot.session_events import (
 )
 
 from reality_check.intelligence.events import EventLog, fresh_input
-from reality_check.intelligence.interface import agent_path
+from reality_check.intelligence.interface import agent_environment
 from reality_check.intelligence.schemas import (
     AgentEvent,
     AgentEventKind,
@@ -140,7 +140,9 @@ class CopilotRun:
                 session_id=self._session_id,
             )
         except Exception as error:  # an SDK or runtime failure is the caller's data, not a crash
-            result = AgentResult(error=f"{type(error).__name__}: {error}", session_id=self._session_id)
+            result = AgentResult(
+                text=self._last_text, error=f"{type(error).__name__}: {error}", session_id=self._session_id
+            )
         finally:
             if not self._running.done():
                 self._running.set_result(None)
@@ -345,9 +347,9 @@ class CopilotIntelligence:
     async def start(self, request: AgentRequest) -> CopilotRun:
         token = await asyncio.to_thread(self._github_token)
         working_directory = str(request.workspace.path) if request.workspace is not None else None
-        path = agent_path(request)
+        variables = agent_environment(request)
         # A given environment is the runtime's whole environment, not one merged over this process's.
-        environment = None if path is None else {**os.environ, "PATH": path}
+        environment = {**os.environ, **variables} if variables else None
         client = CopilotClient(working_directory=working_directory, github_token=token, env=environment)
         try:
             await client.start()

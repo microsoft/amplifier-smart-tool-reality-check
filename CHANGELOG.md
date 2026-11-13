@@ -2,7 +2,13 @@
 
 ## Unreleased
 
+## 0.9.1 (2026-11-12)
+
 - The checking agent's prompt states the machine's CPUs, free memory, and room for more processes and threads. Also added instructions to be more aware of resource usage, particularly when running in parallel.
+- When a check's agent fails, `agent-failed` now gives its last message, its session, its evidence so far, and the command to resume, and writes no `report.md`.
+- On the `claude` agent provider, usage counts each model call, including calls made before a crash, which are marked incomplete.
+- When a check ends, however it ends, it closes the browser sessions its agent opened and stops the processes its agent left running; with `--keep-running` it only lists the processes. The check's `cleanup.json` records both and anything that could not be cleaned up.
+- A checks directory, such as the default `.agents/reality-check`, gets a `.gitignore` that keeps its checks out of git when it has none and holds nothing but checks.
 
 ## 0.9.0 (2026-11-09)
 

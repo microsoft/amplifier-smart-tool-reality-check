@@ -41,6 +41,7 @@ export type CheckUsage = {
   output_tokens: number;
   reasoning_tokens: number;
   billing: Record<string, number>;
+  incomplete: boolean;
 };
 
 /** The fields of `CheckRecord` in schemas.py that the view reads. */

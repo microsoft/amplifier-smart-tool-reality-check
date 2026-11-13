@@ -147,13 +147,14 @@ def state_directory(agent_provider: AgentProvider) -> Path:
     return base / DISTRIBUTION / agent_provider
 
 
-def agent_path(request: AgentRequest) -> str | None:
-    """The PATH the agent runs with: the request's path directories ahead of this process's; None to leave it be."""
-    if not request.path_directories:
-        return None
-    directories = [str(directory) for directory in request.path_directories]
-    inherited = os.environ.get("PATH")
-    return os.pathsep.join([*directories, inherited] if inherited else directories)
+def agent_environment(request: AgentRequest) -> dict[str, str]:
+    """The variables the agent runs with over this process's: the request's, and its path directories ahead of PATH."""
+    variables = dict(request.environment)
+    if request.path_directories:
+        directories = [str(directory) for directory in request.path_directories]
+        inherited = os.environ.get("PATH")
+        variables["PATH"] = os.pathsep.join([*directories, inherited] if inherited else directories)
+    return variables
 
 
 def _install_source(extra: str) -> str:

@@ -3,8 +3,12 @@
 import asyncio
 import base64
 from collections.abc import AsyncIterable, AsyncIterator, Callable
+from dataclasses import replace
+from datetime import UTC, datetime
+import logging
 import os
 from pathlib import Path
+import sys
 from typing import Any
 
 import pytest
@@ -17,6 +21,7 @@ from claude_agent_sdk import (
     ContentBlock,
     Message,
     ModelUsage,
+    ProcessError,
     ResultMessage,
     SessionKey,
     SystemMessage,
@@ -67,8 +72,27 @@ def echo(sent: dict[str, Any]) -> UserMessage:
     return UserMessage(content=text, uuid=sent["uuid"])
 
 
-def assistant(*blocks: ContentBlock, parent: str | None = None) -> AssistantMessage:
-    return AssistantMessage(content=list(blocks), model=MODEL, parent_tool_use_id=parent, session_id=SESSION)
+def assistant(
+    *blocks: ContentBlock, parent: str | None = None, call: str | None = None, input_tokens: int = 0
+) -> AssistantMessage:
+    """An assistant message, from API call `call` that used `input_tokens` when given."""
+    usage = None
+    if call is not None:
+        usage = {
+            "input_tokens": input_tokens,
+            "cache_read_input_tokens": 100,
+            "cache_creation_input_tokens": 20,
+            # Claude Code's own count of a call's output is not final yet when it sends the call's blocks.
+            "output_tokens": 1,
+        }
+    return AssistantMessage(
+        content=list(blocks),
+        model=MODEL,
+        parent_tool_use_id=parent,
+        session_id=SESSION,
+        usage=usage,
+        message_id=call,
+    )
 
 
 def result(
@@ -101,9 +125,9 @@ class FakeClient:
     def __init__(self, world: "FakeWorld", options: ClaudeAgentOptions) -> None:
         self._world = world
         self.options = options
-        self._queue: asyncio.Queue[Message | None] = asyncio.Queue()
+        self._queue: asyncio.Queue[Message | Exception | None] = asyncio.Queue()
 
-    def push(self, *messages: Message | None) -> None:
+    def push(self, *messages: Message | Exception | None) -> None:
         for message in messages:
             self._queue.put_nowait(message)
 
@@ -119,6 +143,8 @@ class FakeClient:
 
     async def receive_messages(self) -> AsyncIterator[Message]:
         while (message := await self._queue.get()) is not None:
+            if isinstance(message, Exception):
+                raise message
             yield message
 
     async def interrupt(self) -> None:
@@ -187,6 +213,9 @@ def world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[..., Fake
     return install
 
 
+MARKER = {"REALITY_CHECK_ID": "20260101-000000-abcdef"}
+
+
 def request(workspace: Path | None = None, **fields: Any) -> AgentRequest:
     return AgentRequest(
         initial_message="Do the work.",
@@ -249,17 +278,21 @@ async def test_a_run_gets_the_workspace_and_its_options_with_telemetry_and_setti
     assert fake.disconnected == 1
 
 
-async def test_path_directories_go_first_on_claude_code_s_path_beside_telemetry_off(
+async def test_path_directories_go_first_on_claude_code_s_path_beside_telemetry_off_and_the_request_s_variables(
     world: Callable[..., FakeWorld], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     fake = world(answers("done"))
     monkeypatch.setenv("PATH", "/usr/bin")
 
-    await (await ClaudeIntelligence().start(request(path_directories=[tmp_path / "shim", tmp_path / "uv"]))).result()
+    await (
+        await ClaudeIntelligence().start(
+            request(path_directories=[tmp_path / "shim", tmp_path / "uv"], environment=MARKER)
+        )
+    ).result()
 
     [options] = fake.options
     path = os.pathsep.join([str(tmp_path / "shim"), str(tmp_path / "uv"), "/usr/bin"])
-    assert options.env == {**TELEMETRY_OFF, "PATH": path}
+    assert options.env == {**TELEMETRY_OFF, "PATH": path, **MARKER}
 
 
 async def test_without_a_workspace_or_effort_a_run_works_in_the_scratch_directory_and_sends_no_effort(
@@ -408,6 +441,7 @@ async def test_claude_messages_become_agent_events_ending_in_one_terminal(world:
         "cost": {"USD": 0.01},
         "billing": {"USD": 0.01},
         "model_usage": {MODEL: model_usage(0.01)},
+        "calls": 1,
     }
     assert (terminal.text, terminal.data["text"], terminal.data["session_id"]) == ("Done.", "Done.", SESSION)
     assert run.session_id == SESSION
@@ -523,6 +557,220 @@ async def test_a_conversation_that_ends_without_a_result_is_the_result_s_error(
     assert result_.session_id == SESSION
     assert fake.disconnected == 1
     assert [each.kind for each in await collect(run)] == ["terminal"]
+
+
+def crashes(*stderr: str) -> Script:
+    """Claude Code printing `stderr` and then killed by SIGABRT, after it said something and made one call."""
+
+    def script(client: FakeClient, sent: dict[str, Any]) -> None:
+        client.push(init(), echo(sent), assistant(TextBlock("Running five flows at once."), call="m9", input_tokens=7))
+        printed = client.options.stderr
+        assert printed is not None
+        for line in stderr:
+            printed(line)
+        client.push(
+            ProcessError("Command failed with exit code -6", exit_code=-6, stderr="Check stderr output for details")
+        )
+
+    return script
+
+
+@pytest.mark.skipif(os.name != "posix", reason="a negative exit code names a signal only on POSIX")
+async def test_claude_code_that_dies_is_the_error_with_its_signal_and_the_end_of_its_stderr(
+    world: Callable[..., FakeWorld], capsys: pytest.CaptureFixture[str]
+) -> None:
+    lines = [f"line {number}" for number in range(45)]
+    world(crashes(*lines))
+
+    run = await ClaudeIntelligence().start(request())
+    result_ = await run.result()
+
+    tail = "\n".join(lines[5:])
+    assert result_.error == f"ProcessError: Claude Code exited with code -6 (SIGABRT); the end of its stderr:\n{tail}"
+    assert (result_.text, result_.session_id) == ("Running five flows at once.", SESSION)
+    printed = capsys.readouterr().err.splitlines()
+    assert len(printed) == 45
+    assert printed[0].endswith(" claude: line 0")
+    assert datetime.fromisoformat(printed[0].split(" ")[0]).tzinfo == UTC
+
+
+# Claude Code's side of the SDK's protocol, as far as one prompt that ends with the process aborting.
+ABORTING_CLI = """
+import json, os, signal, sys
+
+def send(message):
+    sys.stdout.write(json.dumps(message) + "\\n")
+    sys.stdout.flush()
+
+if "-v" in sys.argv:
+    sys.exit(print("9.9.9 (Claude Code)"))
+for line in sys.stdin:
+    message = json.loads(line)
+    if message["type"] == "control_request":
+        response = {"subtype": "success", "request_id": message["request_id"], "response": {}}
+        send({"type": "control_response", "response": response})
+    elif message["type"] == "user":
+        usage = {"input_tokens": 3, "output_tokens": 1}
+        content = [{"type": "text", "text": "Starting."}]
+        send({"type": "assistant", "message": {"id": "m1", "model": "m", "content": content, "usage": usage}})
+        sys.stderr.write("first\\npthread_create: Resource temporarily unavailable")
+        sys.stderr.flush()
+        os.kill(os.getpid(), signal.SIGABRT)
+"""
+
+
+def aborting_claude_code(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Runs start the stand-in Claude Code that aborts, through the real SDK."""
+    cli = tmp_path / "claude"
+    cli.write_text(f"#!{sys.executable}\n{ABORTING_CLI}", encoding="utf-8")
+    cli.chmod(0o755)
+    options = adapter.claude_options
+    monkeypatch.setattr(adapter, "state_directory", lambda agent_provider: tmp_path / "state" / agent_provider)
+    monkeypatch.setattr(
+        adapter, "claude_options", lambda *arguments, **named: replace(options(*arguments, **named), cli_path=cli)
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the stand-in Claude Code is a script that kills itself with a signal")
+async def test_the_sdk_hands_over_all_of_claude_code_s_stderr_before_its_exit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    aborting_claude_code(monkeypatch=monkeypatch, tmp_path=tmp_path)
+
+    run = await ClaudeIntelligence().start(request())
+    result_ = await run.result()
+
+    assert result_.error == (
+        "ProcessError: Claude Code exited with code -6 (SIGABRT); the end of its stderr:\n"
+        "first\npthread_create: Resource temporarily unavailable"
+    )
+    assert result_.text == "Starting."
+    [usage] = [each.data for each in await collect(run) if each.kind == "usage"]
+    assert (usage["calls"], usage["input_tokens"], usage["incomplete"]) == (1, 3, True)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the stand-in Claude Code is a script that kills itself with a signal")
+async def test_the_sdk_s_placeholder_line_for_a_failed_claude_code_is_not_logged_and_its_other_records_are(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    aborting_claude_code(monkeypatch=monkeypatch, tmp_path=tmp_path)
+
+    result_ = await (await ClaudeIntelligence().start(request())).result()
+    logging.getLogger(adapter.SDK_READER_LOGGER).error("Prompt stream failed; closing stdin: %s", "broken pipe")
+
+    assert result_.error is not None
+    assert result_.error.startswith("ProcessError: Claude Code exited with code -6 (SIGABRT)")
+    logged = [record.getMessage() for record in caplog.records if record.name.startswith("claude_agent_sdk")]
+    assert not any(adapter.SDK_STDERR_PLACEHOLDER in message for message in logged)
+    assert "Prompt stream failed; closing stdin: broken pipe" in logged
+
+
+async def test_the_last_of_claude_code_s_stderr_is_waited_for_when_the_sdk_raises_before_it_arrives(
+    world: Callable[..., FakeWorld],
+) -> None:
+    def script(client: FakeClient, sent: dict[str, Any]) -> None:
+        crashes("first")(client, sent)
+        printed = client.options.stderr
+        assert printed is not None
+        asyncio.get_running_loop().call_later(adapter.STDERR_QUIET_SECONDS / 2, printed, "last")
+
+    world(script)
+
+    result_ = await (await ClaudeIntelligence().start(request())).result()
+
+    assert result_.error is not None
+    assert result_.error.endswith("; the end of its stderr:\nfirst\nlast")
+
+
+async def test_claude_code_that_dies_without_a_word_on_stderr_says_so(world: Callable[..., FakeWorld]) -> None:
+    world(crashes())
+
+    result_ = await (await ClaudeIntelligence().start(request())).result()
+
+    assert result_.error is not None
+    assert result_.error.startswith("ProcessError: Claude Code exited with code -6")
+    assert result_.error.endswith(" and printed nothing on stderr.")
+    assert result_.text == "Running five flows at once."
+
+
+async def test_usage_counts_each_api_call_once_however_many_messages_carry_it_and_each_result_its_own(
+    world: Callable[..., FakeWorld],
+) -> None:
+    def working(client: FakeClient, sent: dict[str, Any]) -> None:
+        client.push(
+            init(),
+            echo(sent),
+            assistant(ThinkingBlock(thinking="Think.", signature="s"), call="m1", input_tokens=5),
+            assistant(TextBlock("Working."), call="m1", input_tokens=5),
+        )
+
+    def steered(client: FakeClient, sent: dict[str, Any]) -> None:
+        client.push(
+            assistant(ToolUseBlock(id="call-1", name="Bash", input={}), call="m2", input_tokens=6),
+            UserMessage(content=[ToolResultBlock(tool_use_id="call-1", content="ok")]),
+            result("DONE1"),
+            echo(sent),
+            assistant(TextBlock("STEERED2"), call="m3", input_tokens=7),
+            result("STEERED2"),
+        )
+
+    world(working, steered)
+
+    run = await ClaudeIntelligence().start(request())
+    await until_message(run, "Working.")
+    await run.steer("Also say STEERED2.")
+    events = await collect(run)
+
+    usage = [each.data for each in events if each.kind == "usage"]
+    assert [(each["calls"], each["input_tokens"], "incomplete" in each) for each in usage] == [
+        (2, 10, False),
+        (1, 10, False),
+    ]
+
+
+async def test_a_result_with_no_usage_counts_its_calls_input(world: Callable[..., FakeWorld]) -> None:
+    def script(client: FakeClient, sent: dict[str, Any]) -> None:
+        answer = result()
+        answer.usage = {"input_tokens": 0, "output_tokens": 0, "service_tier": "standard"}
+        client.push(
+            echo(sent),
+            assistant(TextBlock("a"), call="m1", input_tokens=5),
+            assistant(TextBlock("b"), call="m2", input_tokens=6),
+            answer,
+        )
+
+    world(script)
+
+    events = await collect(await ClaudeIntelligence().start(request()))
+
+    [usage] = [each.data for each in events if each.kind == "usage"]
+    assert (usage["calls"], usage["input_tokens"], usage["fresh_input_tokens"]) == (2, 11, 11)
+    assert (usage["cache_read_tokens"], usage["cache_write_tokens"], usage["output_tokens"]) == (200, 40, None)
+    assert usage["cost"] == {"USD": 0.01}
+
+
+async def test_a_run_that_fails_counts_its_calls_as_incomplete_usage(world: Callable[..., FakeWorld]) -> None:
+    def script(client: FakeClient, sent: dict[str, Any]) -> None:
+        client.push(echo(sent), assistant(TextBlock("a"), call="m1", input_tokens=5))
+        crashes()(client, sent)
+
+    world(script)
+
+    events = await collect(await ClaudeIntelligence().start(request()))
+
+    assert [each.kind for each in events][-2:] == ["usage", "terminal"]
+    assert events[-2].data == {
+        "model": MODEL,
+        "input_tokens": 12,
+        "fresh_input_tokens": 12,
+        "output_tokens": None,
+        "cache_read_tokens": 200,
+        "cache_write_tokens": 40,
+        "cost": None,
+        "billing": {},
+        "calls": 2,
+        "incomplete": True,
+    }
 
 
 @pytest.mark.parametrize(
