@@ -18,7 +18,7 @@ import sys
 import threading
 from typing import IO, Any, Literal, Protocol
 
-from filelock import Timeout
+from filelock import AsyncFileLock, Timeout
 import platformdirs
 from pydantic import BaseModel
 import yaml
@@ -52,10 +52,12 @@ from reality_check.capabilities.check_software.constants import (
 from reality_check.capabilities.check_software.intelligence_models import require_allowed
 from reality_check.capabilities.check_software.machine import machine_text
 from reality_check.capabilities.check_software.record import (
+    CHECK_ID_PATTERN,
     CLEANUP,
     EVENTS,
     EVIDENCE,
     PROCESS_LOG,
+    RECORD,
     REPORT,
     SESSION,
     alive,
@@ -119,6 +121,7 @@ IMAGES = "images"
 # The parts of the record the `started` event repeats, so the events alone say what was asked and how.
 STARTED_FIELDS = {
     "request",
+    "request_key",
     "target",
     "resume",
     "previous_checks",
@@ -174,6 +177,7 @@ class DetachedCheckRequest(BaseModel):
     timeout_seconds: int | None
     images: list[Path] | None
     origin: str
+    request_key: str | None = None
 
 
 class InProcessCheckRun:
@@ -651,37 +655,14 @@ async def check_software(
     origin: str = DEFAULT_ORIGIN,
     detach: bool = False,
     intelligence: Intelligence | None = None,
+    request_key: str | None = None,
 ) -> CheckRun:
     """Start a check and return its handle once it runs; the work goes on in the background, or in its own process."""
     # Checks run in the caller's working directory, and a detached check's process inherits it. The registry only
     # helps find checks later, so a check still runs when it cannot be written.
     with contextlib.suppress(RealityCheckError, OSError, Timeout):
         register_project(checks_directory, Path.cwd())
-    if not detach:
-        return await _start(
-            request=request,
-            target=target,
-            resume=resume,
-            previous_checks=previous_checks,
-            ask_first=ask_first,
-            keep_running=keep_running,
-            checks_directory=checks_directory,
-            agent_provider=agent_provider,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            timeout_seconds=timeout_seconds,
-            images=images,
-            origin=origin,
-            intelligence=intelligence,
-            detached=False,
-        )
-    if intelligence is not None:
-        raise RealityCheckError(
-            code="detach-with-intelligence",
-            message="A detached check runs its agent in its own process, which the intelligence passed cannot reach.",
-            remedy="Leave out detach to run the agent with that intelligence here, or leave out the intelligence.",
-        )
-    detached = DetachedCheckRequest(
+    submission = DetachedCheckRequest(
         request=request,
         target=target,
         resume=resume,
@@ -695,16 +676,74 @@ async def check_software(
         timeout_seconds=timeout_seconds,
         images=[path.resolve() for path in images] if images else None,
         origin=origin,
+        request_key=request_key,
     )
-    return await _detach(detached)
+    if not detach:
+        return await _start(submission, intelligence, detached=False)
+    if intelligence is not None:
+        raise RealityCheckError(
+            code="detach-with-intelligence",
+            message="A detached check runs its agent in its own process, which the intelligence passed cannot reach.",
+            remedy="Leave out detach to run the agent with that intelligence here, or leave out the intelligence.",
+        )
+    return await _detach(submission)
 
 
-async def start_detached(request: DetachedCheckRequest, intelligence: Intelligence | None) -> InProcessCheckRun:
+async def start_detached(request: DetachedCheckRequest, intelligence: Intelligence | None) -> CheckRun:
     """Start the check a detached request asks for in this process, which is that check's own."""
-    return await _start(**request.model_dump(), intelligence=intelligence, detached=True)
+    return await _start(request, intelligence, detached=True)
 
 
-async def _start(
+async def _start(request: DetachedCheckRequest, intelligence: Intelligence | None, detached: bool) -> CheckRun:
+    key = request.request_key
+    if key is None:
+        return await _start_new(**request.model_dump(), intelligence=intelligence, detached=detached)
+    if not key.strip() or len(key) > 256:
+        raise RealityCheckError(
+            code="bad-request-key",
+            message="A request key must contain 1 to 256 characters and cannot be blank.",
+            remedy="Create a unique key for this submission, and reuse it only when recovering that submission.",
+        )
+    root = request.checks_directory
+    make_checks_directory(root)
+    key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    arguments = {
+        **request.model_dump(mode="json", exclude={"request_key"}),
+        "working_directory": str(Path.cwd().resolve()),
+        "detached": detached,
+    }
+    fingerprint = hashlib.sha256(json.dumps(arguments, sort_keys=True).encode("utf-8")).hexdigest()
+    # The process creating the record holds the lock, including when the original caller exits before a detached
+    # process starts. A retry can recover that record but can never start a second agent for it.
+    async with AsyncFileLock(root / f".submission-{key_hash}.lock"):
+        for path in root.glob(f"*/{RECORD}"):
+            if not CHECK_ID_PATTERN.fullmatch(path.parents[0].name):
+                continue
+            record = await asyncio.to_thread(load_record, root, path.parents[0].name)
+            if record.request_key != key:
+                continue
+            if record.request_fingerprint != fingerprint:
+                raise RealityCheckError(
+                    code="request-key-conflict",
+                    message=f"Request key {key!r} already identifies check {record.check_id} with different input.",
+                    remedy="Repeat the original arguments to recover it, or use a new key for a new check.",
+                )
+            if record.last_event is None:
+                raise RealityCheckError(
+                    code="check-start-unknown",
+                    message=f"Check {record.check_id} was recorded but its start was not confirmed.",
+                    remedy=f"Inspect {path.parents[0]}; this submission has not been restarted. Use a new key only "
+                    "after deciding to create a separate check.",
+                )
+            return DetachedCheckRun(
+                record.check_id, path.parents[0], record.origin, _next_command(record.check_id, root)
+            )
+        return await _start_new(
+            **request.model_dump(), intelligence=intelligence, detached=detached, request_fingerprint=fingerprint
+        )
+
+
+async def _start_new(
     request: str,
     target: str | None,
     resume: str | None,
@@ -720,6 +759,8 @@ async def _start(
     origin: str,
     intelligence: Intelligence | None,
     detached: bool,
+    request_key: str | None = None,
+    request_fingerprint: str | None = None,
 ) -> InProcessCheckRun:
     root = checks_directory.resolve()
     resumed = load_record(root, resume) if resume is not None else None
@@ -777,6 +818,8 @@ async def _start(
     record = CheckRecord(
         check_id=check_id,
         request=request,
+        request_key=request_key,
+        request_fingerprint=request_fingerprint,
         target=target,
         resume=resume,
         previous_checks=previous or None,

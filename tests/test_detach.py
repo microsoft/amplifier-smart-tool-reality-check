@@ -26,6 +26,55 @@ DETACHED_TIMEOUT_SECONDS = 30
 runner = CliRunner()
 
 
+async def test_concurrent_detached_submissions_recover_one_check(detached: Callable[[str], None]) -> None:
+    detached("works-forever")
+    runs = await asyncio.wait_for(
+        asyncio.gather(*(lib.check_software("Check export", detach=True, request_key="export-1") for _ in range(4))),
+        DETACHED_TIMEOUT_SECONDS,
+    )
+    try:
+        assert len({run.check_id for run in runs}) == 1
+        assert len(list(Path(".agents/reality-check").glob("*/check.json"))) == 1
+        detached("not-configured")
+        recovered = await lib.check_software("Check export", detach=True, request_key="export-1")
+        assert recovered.check_id == runs[0].check_id
+        assert record_of(recovered).pid == record_of(runs[0]).pid
+    finally:
+        await asyncio.wait_for(runs[0].cancel(), DETACHED_TIMEOUT_SECONDS)
+
+
+async def test_recovering_a_crashed_submission_does_not_restart_it(detached: Callable[[str], None]) -> None:
+    detached("works-forever")
+    run = await lib.check_software("Check export", detach=True, request_key="export-1")
+    pid = record_of(run).pid
+    assert pid is not None
+    process = psutil.Process(pid)
+    process.kill()
+    await asyncio.to_thread(process.wait, DETACHED_TIMEOUT_SECONDS)
+    detached("not-configured")
+
+    recovered = await lib.check_software("Check export", detach=True, request_key="export-1")
+    with pytest.raises(RealityCheckError) as crashed:
+        await asyncio.wait_for(recovered.result(), DETACHED_TIMEOUT_SECONDS)
+
+    assert recovered.check_id == run.check_id
+    assert record_of(recovered).pid == pid
+    assert crashed.value.code == "check-crashed"
+    assert lib.read_check(run.check_id).state == "crashed"
+    assert len(list(Path(".agents/reality-check").glob("*/check.json"))) == 1
+
+
+def test_cli_submission_recovery_preserves_the_check_id(detached: Callable[[str], None]) -> None:
+    detached("finishes")
+    arguments = ["check-software", "--request", "Check export", "--request-key", "export-1", "--detach"]
+    first = runner.invoke(app, arguments)
+    detached("not-configured")
+    repeated = runner.invoke(app, arguments)
+
+    assert first.exit_code == repeated.exit_code == 0, (first.output, repeated.output)
+    assert json.loads(first.stdout)["check_id"] == json.loads(repeated.stdout)["check_id"]
+
+
 @pytest.fixture(autouse=True)
 def working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.chdir(tmp_path)

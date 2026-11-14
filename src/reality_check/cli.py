@@ -173,6 +173,9 @@ def check_software(
     detach: Annotated[
         bool, typer.Option("--detach", help="Run the check in a process of its own; print its started event and exit.")
     ] = False,
+    request_key: Annotated[
+        str | None, typer.Option("--request-key", help="Reuse this key and the same arguments to recover a submission.")
+    ] = None,
 ) -> None:
     """Check software as a user would, printing each event as a JSON line. Model-backed."""
     code = asyncio.run(
@@ -192,6 +195,7 @@ def check_software(
                 images=images,
                 origin=origin,
                 detach=detach,
+                request_key=request_key,
             ),
             detach,
         )

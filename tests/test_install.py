@@ -220,6 +220,9 @@ class Machine:
         )
         monkeypatch.setattr(browser_install.platformdirs, "user_data_path", lambda *args, **kwargs: self.data)
         monkeypatch.setattr(computer_use_install, "MACOS_APP", tmp_path / "Applications" / "CuaDriver.app")
+        monkeypatch.setattr(
+            computer_use_install, "windows_folders", lambda: (self.data / "LocalAppData", self.data / "Profile")
+        )
         monkeypatch.setattr(subprocess, "run", self._run)
         monkeypatch.setattr(download, "urlopen", self._urlopen)
 

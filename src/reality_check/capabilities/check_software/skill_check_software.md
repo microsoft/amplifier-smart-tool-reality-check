@@ -105,10 +105,14 @@ Checks take at least a few minutes, with more complex or generic asks possibly t
   `check.json` and on its events; default `unknown`.
 - `--detach`: run the check in a process of its own that outlives this one; print the `started`
   event and exit 0, or exit 1 with why it did not start.
+- `--request-key TEXT`: a unique key you choose before submitting. Repeat it with the same
+  arguments and working directory after a lost reply to recover the same check without
+  another run. Keep the check records. Use a new key for an intentional recheck or follow-up;
+  recovery never restarts a crashed check. Replayed events describe the original check.
 - Library: `check_software(request, target=None, resume=None, previous_checks=None, ask_first="when-off",
   keep_running=False, checks_directory=Path(".agents/reality-check"), agent_provider=None,
   model=None, reasoning_effort=None, timeout_seconds=None (no limit), images=None, origin="unknown",
-  detach=False, intelligence=None)`, which returns a `CheckRun` with `check_id`, `directory`,
+  detach=False, intelligence=None, request_key=None)`, which returns a `CheckRun` with `check_id`, `directory`,
   `events()`, `steer(message)`, `cancel()`, and `result()`.
 
 ## Result

@@ -320,6 +320,8 @@ class CheckRecord(BaseModel):
 
     check_id: str
     request: str
+    request_key: str | None = None
+    request_fingerprint: str | None = None
     target: str | None
     resume: str | None
     previous_checks: list[Path] | None = None

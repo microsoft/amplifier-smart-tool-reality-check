@@ -25,6 +25,7 @@ async def check_software(
     origin: str = DEFAULT_ORIGIN,     # who starts the check, such as "app" or "claude-code:<session id>"; "unknown" by default
     detach: bool = False,             # run the check in a process of its own that outlives this one
     intelligence: Intelligence | None = None,
+    request_key: str | None = None,   # caller-generated key for recovering this submission without another check
 ) -> CheckRun
 ```
 
@@ -46,6 +47,8 @@ class CheckRun(Protocol):
 ```
 
 `InProcessCheckRun` runs the agent in this process. With `detach`, `DetachedCheckRun` follows a check that runs in a process of its own, started apart from the caller's session and job, through the files it writes; what that process prints goes to `process.log` in the check. A check that cannot start raises the same error either way. `detach` with an `intelligence` raises `detach-with-intelligence`.
+
+For a submission whose reply might be lost, choose a unique `request_key` before calling. Repeating the key with the same arguments returns a file-backed handle to the same check, including after the caller restarts, without starting another agent or requiring model access. Keys belong to the resolved checks directory and remain recoverable while its check records are retained. The key and a fingerprint of the arguments are kept in `check.json`; recovery never restarts a crashed or unconfirmed check. Changed arguments with the same key are refused. Paths are compared after resolution; their changing contents are not a new submission. Use a new key for an intentional recheck or a follow-up with `resume`, which still creates a new linked check. Omitting the key keeps the existing new-check behavior.
 
 Another process can steer or cancel a running check by its `check_id`. The message or the cancel is written to the check's directory and acted on by the process that runs the check. Both are deterministic.
 

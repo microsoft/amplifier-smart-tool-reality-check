@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.2 (2026-11-14)
+
+- `check-software` accepts an optional caller-generated request key. Repeating the same submission recovers its existing check after a lost reply or caller restart, without starting another agent. A changed request under the same key is refused; a crashed or unconfirmed check is never restarted by recovery.
+
 ## 0.9.1 (2026-11-12)
 
 - The checking agent's prompt states the machine's CPUs, free memory, and room for more processes and threads. Also added instructions to be more aware of resource usage, particularly when running in parallel.

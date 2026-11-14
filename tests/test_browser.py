@@ -5,6 +5,8 @@ import contextlib
 import json
 import os
 from pathlib import Path
+import shlex
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -99,14 +101,17 @@ def run_shim(tmp_path: Path, certutil: bool, ssl_cert_file: Path | None = None) 
     """Run a fresh shim for a fake agent-browser that prints its environment, with certutil on PATH or not."""
     binary = tmp_path / "bin dir" / "agent-browser"
     binary.parent.mkdir(exist_ok=True)
-    binary.write_text('#!/bin/sh\nenv\necho "args: $*"\n', encoding="utf-8")
+    environment_command = shutil.which("env")
+    assert environment_command is not None
+    binary.write_text(f'#!/bin/sh\n{shlex.quote(environment_command)}\necho "args: $*"\n', encoding="utf-8")
     binary.chmod(0o755)
     tools = tmp_path / "tools"
     tools.mkdir(exist_ok=True)
     if certutil:
         (tools / "certutil").write_text("#!/bin/sh\n", encoding="utf-8")
         (tools / "certutil").chmod(0o755)
-    environment = {"PATH": f"{tools}:/usr/bin:/bin"}
+    # Only the fixture decides whether certutil exists, even on a host with it installed.
+    environment = {"PATH": str(tools)}
     if ssl_cert_file is not None:
         environment["SSL_CERT_FILE"] = str(ssl_cert_file)
     command = write_shim(LINUX, binary, tmp_path / "cache")

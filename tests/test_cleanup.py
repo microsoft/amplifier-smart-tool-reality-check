@@ -270,6 +270,8 @@ def test_a_process_that_cannot_be_read_is_a_problem_and_the_others_are_still_sto
     recorded = json.loads(path.read_text(encoding="utf-8"))
     assert [(entry["pid"], entry["outcome"]) for entry in recorded["processes"]] == [(readable.pid, "stopped")]
     [problem] = recorded["problems"]
-    assert problem.startswith(f"Process {unreadable.pid}, which the agent left running, could not be read: AccessDenied")
+    assert problem.startswith(
+        f"Process {unreadable.pid}, which the agent left running, could not be read: AccessDenied"
+    )
     assert gone(readable)
     assert not gone(unreadable)

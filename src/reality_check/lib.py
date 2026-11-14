@@ -88,6 +88,7 @@ async def check_software(
     origin: str = DEFAULT_ORIGIN,
     detach: bool = False,
     intelligence: Intelligence | None = None,
+    request_key: str | None = None,
 ) -> CheckRun:
     """Start a check of software as a user uses it, returning its handle as soon as it runs. Model-backed.
 
@@ -110,6 +111,7 @@ async def check_software(
         origin=origin,
         detach=detach,
         intelligence=intelligence,
+        request_key=request_key,
     )
 
 
