@@ -58,6 +58,9 @@ async def _run(request: check.DetachedCheckRequest, intelligence: Intelligence |
         except Exception as error:  # whatever stopped it, the caller is waiting to hear
             _report(report, _start_failed(error))
             return 1
+        if not isinstance(run, check.InProcessCheckRun):
+            _report(report, {"check_id": run.check_id, "directory": str(run.directory)})
+            return 0
         _log_to(run.directory / PROCESS_LOG)
         try:
             await run.running()
