@@ -33,9 +33,11 @@ sections:
   - kind: media
     image: site/assets/reality-check-demo.png
     video: site/assets/reality-check-demo.mp4
-    width: 1280
-    height: 720
-    alt: Reality Check opens an app, uses it step by step, and shows a report with screenshots for each finding.
+    width: 1920
+    height: 1080
+    alt: >-
+      An agent says a broken app is done. Reality Check then tests the app like a real user and
+      shows a report with evidence for each finding, followed by its score, its cost, and how to install it.
 
   # The app, with one example check. The build copies the directory beside the page.
   - kind: embed
