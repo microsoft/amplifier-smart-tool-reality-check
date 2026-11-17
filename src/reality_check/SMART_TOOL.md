@@ -1,7 +1,7 @@
 ---
 smart_tool_format: 1
 name: reality-check
-version: 0.9.1
+version: 0.9.2
 description: >-
   Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do
 use_cases:
@@ -34,7 +34,7 @@ requires:
       instance OPENAI_API_KEY for its default model. Without them, the model-backed
       capabilities cannot run through amplifier-agent.
     optional: true
-    install: https://github.com/microsoft/amplifier-agent/blob/v0.25.0/docs/providers.md
+    install: https://github.com/microsoft/amplifier-agent/blob/v0.30.0/docs/providers.md
   - name: codex-sign-in
     purpose: >-
       The Codex CLI signed in with ChatGPT or an API key, for the codex agent provider.
@@ -86,13 +86,13 @@ Not for unit tests, load testing, or security testing.
 
 ```bash
 # as a CLI
-uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.1"
+uv tool install "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.2"
 
 # as a library, from another project
-uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.1"
+uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.2"
 
 # once, without installing
-uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.1" reality-check --help
+uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.2" reality-check --help
 
 # once, to give checks everything they can use
 reality-check install
@@ -127,7 +127,7 @@ provider, the first installed of `copilot`, `amplifier-agent`, `codex`, and `cla
 - `amplifier-agent`: [Amplifier Agent](https://github.com/microsoft/amplifier-agent), calling
   the model provider named in the model `<provider>/<model>` with that provider's credentials,
   for instance `OPENAI_API_KEY` for the default `openai/...` models. See its
-  [providers](https://github.com/microsoft/amplifier-agent/blob/v0.25.0/docs/providers.md).
+  [providers](https://github.com/microsoft/amplifier-agent/blob/v0.30.0/docs/providers.md).
 - `codex`: [OpenAI Codex](https://github.com/openai/codex), with the user's Codex configuration.
   The Codex CLI must be signed in with ChatGPT or an API key, see
   [authentication](https://developers.openai.com/codex/auth).

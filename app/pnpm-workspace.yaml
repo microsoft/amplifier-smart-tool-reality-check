@@ -1,2 +1,6 @@
 # Matches `exclude-newer` in pyproject.toml: a version must be 7 days old before it installs.
 minimumReleaseAge: 10080
+overrides:
+  # minimatch before 11.0.1 has a Dependabot alert, and @eslint/config-array and @typescript-eslint/typescript-estree
+  # still ask for 10.x. Remove once they ask for 11.0.1 or later.
+  "minimatch@<11.0.1": "^11.0.5"

@@ -96,6 +96,12 @@ class IntelligenceModel(BaseModel):
 # The models Reality Check supports and recommends, not a mirror of what an agent provider offers.
 INTELLIGENCE_MODELS: tuple[IntelligenceModel, ...] = (
     IntelligenceModel(
+        agent_provider="copilot", id="gpt-6.2-sol", label="GPT-6.2 Sol", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="copilot", id="gpt-6.2-astra", label="GPT-6.2 Astra", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
         agent_provider="copilot", id="gpt-6.1-sol", label="GPT-6.1 Sol", reasoning_efforts=ALL_EFFORTS, vision=True
     ),
     IntelligenceModel(
@@ -160,6 +166,12 @@ INTELLIGENCE_MODELS: tuple[IntelligenceModel, ...] = (
         vision=True,
     ),
     IntelligenceModel(
+        agent_provider="codex", id="gpt-6.2-sol", label="GPT-6.2 Sol", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
+        agent_provider="codex", id="gpt-6.2-astra", label="GPT-6.2 Astra", reasoning_efforts=ALL_EFFORTS, vision=True
+    ),
+    IntelligenceModel(
         agent_provider="codex", id="gpt-6.1-sol", label="GPT-6.1 Sol", reasoning_efforts=ALL_EFFORTS, vision=True
     ),
     IntelligenceModel(
@@ -182,6 +194,13 @@ INTELLIGENCE_MODELS: tuple[IntelligenceModel, ...] = (
         agent_provider="claude",
         id="claude-opus-5-5",
         label="Claude Opus 5.5",
+        reasoning_efforts=ALL_EFFORTS,
+        vision=True,
+    ),
+    IntelligenceModel(
+        agent_provider="claude",
+        id="claude-fable-5-2",
+        label="Claude Fable 5.2",
         reasoning_efforts=ALL_EFFORTS,
         vision=True,
     ),
