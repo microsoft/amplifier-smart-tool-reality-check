@@ -3,6 +3,7 @@ Check and compile the app's frontend into the package, when the tools to do so a
 
 The compiled MCP App view under `src/reality_check/capabilities/app/static/view/` and the browser host page under
 `src/reality_check/capabilities/app/static/host/` are committed, so the tool installs and runs with no Node anywhere.
+So is the website's example under `site/demo/`, so the website builds with no Node.
 Node and pnpm are needed only to change the frontend; without them this script says so and exits 0, so
 `prek run --all-files` passes for a Python-only contributor.
 
@@ -15,7 +16,7 @@ import subprocess
 import sys
 
 APP = Path(__file__).parent / "app"
-ALL_SCRIPTS = ["lint", "format", "typecheck", "build", "build:view"]
+ALL_SCRIPTS = ["lint", "format", "typecheck", "build", "build:view", "build:demo"]
 
 
 def main() -> None:

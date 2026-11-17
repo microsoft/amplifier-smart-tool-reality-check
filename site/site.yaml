@@ -1,0 +1,118 @@
+# The content of the Reality Check website. The version and platforms come from the manifest.
+kind: tool
+key: reality-check
+name: Reality Check
+# Browser tab and search engines.
+title: Reality Check | Amplifier Smart Tools
+description: >-
+  Reality Check tests your app by using it: in a browser, on the desktop, or in a Digital Twin Universe.
+  It reports what works and what does not, with evidence for each finding.
+
+# The large headline. Each entry is one line.
+promise:
+  - Tests your app
+  - by using it.
+# The tool's color, from its icon. It tints the parts that are the tool's own.
+tint: '#f2a7c3'
+# Links beside the GitHub button.
+links:
+  - label: Read the blog post
+    url: https://microsoft.github.io/amplifier-smart-tools/blog/optimized-sub-agents/
+
+# The list at the right of the headline. Each entry has a copy button.
+requests:
+  title: Then ask
+  items:
+    - My app is running locally. Check that a new user can sign up and send a message.
+    - Set up this repository as if it were deployed, and check that the dashboard loads in under three seconds with no console errors.
+    - Click through every settings page and list where the spacing, icons, or wording are not consistent.
+
+# The parts of the page under the headline, in order. Each has a kind.
+sections:
+  # The video. The image shows until the video plays.
+  - kind: media
+    image: site/assets/reality-check-demo.png
+    video: site/assets/reality-check-demo.mp4
+    width: 1280
+    height: 720
+    alt: Reality Check opens an app, uses it step by step, and shows a report with screenshots for each finding.
+
+  # The app, with one example check. The build copies the directory beside the page.
+  - kind: embed
+    title: It doesn't tell, it shows.
+    text: This is the Reality Check app with one example check. Open the evidence, and see what the agent did.
+    directory: site/demo
+    label: The Reality Check app, showing an example check of a sign-up and chat app
+    height: 600
+    # The example's own words, as the app shows them.
+    content:
+      # The request, at the top of the activity.
+      request: |-
+        My app is running locally. Check that a new user can sign up and send a message.
+
+        Also check that a message typed but not sent is still in the message box after a reload, and that password reset sends an email.
+      # The report in the app. Each file it names, such as evidence/03-send-failed.png, shows as cited.
+      report: |
+        # Sending a message fails
+
+        A new user can sign up, but their first message is never sent. A typed message survives a reload. Password reset was not checked.
+
+        **Send a message: failed.** The message is marked "Not sent" and Sunday never replies. `POST /api/chat` returned 500 ([network log](evidence/03-click-send.har)), then the page threw `TypeError: Cannot read properties of undefined (reading 'id')` ([console](evidence/03-click-send.console.txt)). A second try failed the same way.
+
+        ![After Send, the message is marked Not sent](evidence/03-send-failed.png)
+
+        - **Sign up: passed.** `POST /api/users` returned 201, and the home page greets the new user ([form](evidence/01-sign-up.png), [signed in](evidence/02-signed-up.png), [network log](evidence/02-sign-up.har)).
+        - **A typed message survives a reload: passed.** It is still in the message box ([screenshot](evidence/04-after-reload.png)).
+        - **Password reset: not checked.** The page says a link is on its way, but no mail service was reachable to receive it ([screenshot](evidence/05-reset-requested.png), [terminal](evidence/05-mail-unreachable.terminal.txt)).
+      # The screenshots under the report. outcome is one of: passed, failed, skipped.
+      gallery:
+        title: Screenshots
+        items:
+          - evidence: 02-signed-up.png
+            label: Sign up
+            outcome: passed
+          - evidence: 03-send-failed.png
+            label: Send a message
+            outcome: failed
+          - evidence: 04-after-reload.png
+            label: Draft after a reload
+            outcome: passed
+          - evidence: 05-reset-requested.png
+            label: Password reset
+            outcome: skipped
+
+  # Cards. icon is one of: box, plug, window, check, chat, terminal, loop, spark, library, search.
+  - kind: cards
+    title: It uses your app like a real user.
+    items:
+      - title: In a browser
+        text: It clicks, types, and reads the page, the requests, and the console.
+        icon: window
+      - title: On the desktop
+        text: It drives native apps through computer use.
+        icon: terminal
+      - title: In a Digital Twin Universe
+        text: It sets up your repository in a clean environment, as if it were deployed.
+        icon: box
+
+  # What the tool is for, beside what it is not for.
+  - kind: fit
+    title: When to use it.
+    use:
+      title: Use it
+      items:
+        - After your agent builds a feature.
+        - After a bug fix, to check the fix and what is near it.
+        - When a scripted test fails and you cannot tell why.
+    other:
+      title: Keep scripted tests for
+      items:
+        - Unit tests.
+        - A release gate.
+        - A CI step.
+      note: A check takes minutes. Scripted tests are faster and cheaper there.
+
+# Other tools at the end of the page, by their key in the theme's family.json.
+related:
+  - digital-twin-universe
+  - smart-tool-creator

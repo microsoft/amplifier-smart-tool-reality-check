@@ -9,6 +9,8 @@ Reality Check is a [Smart Tool](https://github.com/microsoft/amplifier-smart-too
 
 Use it from the agent you already work in, such as Amplifier, Copilot, Codex, or Claude Code.
 
+[Explore the website](https://microsoft.github.io/amplifier-smart-tool-reality-check/)
+
 ## Quickstart
 
 1. Ask your agent:

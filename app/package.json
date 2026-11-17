@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "build:view": "tsc -b && vite build --mode view",
+    "build:demo": "tsc -b && vite build --mode demo && vite build --mode demo-view",
     "lint": "eslint --fix --max-warnings 0 .",
     "format": "prettier --write .",
     "typecheck": "tsc -b",

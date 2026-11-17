@@ -1,0 +1,8 @@
+$ grep -E '^(SMTP|MAIL)_' .env
+SMTP_HOST=localhost
+SMTP_PORT=1025
+MAIL_FROM=hello@sunday.local
+$ nc -zv localhost 1025
+nc: connect to localhost (127.0.0.1) port 1025 (tcp) failed: Connection refused
+$ curl -sS --max-time 3 http://localhost:8025/api/v1/messages
+curl: (7) Failed to connect to localhost port 8025 after 0 ms: Couldn't connect to server

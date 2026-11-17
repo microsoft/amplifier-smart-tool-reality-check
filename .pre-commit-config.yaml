@@ -53,7 +53,7 @@ repos:
 
       - id: app-build
         name: app build
-        entry: uv run build-app.py build build:view
+        entry: uv run build-app.py build build:view build:demo
         language: system
         files: ^app/
         pass_filenames: false

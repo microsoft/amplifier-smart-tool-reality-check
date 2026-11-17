@@ -1,0 +1,5 @@
+[error] Failed to load resource: the server responded with a status of 500 (Internal Server Error)
+    http://localhost:4310/api/chat
+[error] TypeError: Cannot read properties of undefined (reading 'id')
+    at send (http://localhost:4310/app.js:161:36)
+    at async HTMLFormElement.<anonymous> (http://localhost:4310/app.js:167:13)
