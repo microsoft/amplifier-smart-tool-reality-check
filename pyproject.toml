@@ -67,6 +67,8 @@ dev = [
 [tool.ruff]
 line-length = 120
 target-version = "py313"
+# The website theme is a copy of a shared source and stays as it is.
+extend-exclude = ["site/theme", "_site"]
 
 [tool.ruff.lint]
 select = [
@@ -101,6 +103,9 @@ split-on-trailing-comma = false
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.ty.src]
+exclude = ["site/theme", "_site"]
 
 [tool.ty.environment]
 # The evaluation harness imports its modules from `evaluations/`, the directory its script runs from.

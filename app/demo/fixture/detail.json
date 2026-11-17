@@ -1,0 +1,88 @@
+{
+  "check": {
+    "check_id": "20261112-220641-3f9a2c",
+    "target": "http://localhost:4310",
+    "resume": null,
+    "previous_checks": null,
+    "ask_first": "when-off",
+    "keep_running": false,
+    "agent_provider": "claude",
+    "model": "claude-opus-5-5",
+    "reasoning_effort": "medium",
+    "session_id": null,
+    "status": "done",
+    "timeout_seconds": null,
+    "started_at": "2026-11-12T22:06:41.487305Z",
+    "ended_at": "2026-11-12T22:08:40.292241Z",
+    "pid": null,
+    "pid_started": null,
+    "last_event": "2026-11-12T22:08:40.256532Z",
+    "origin": "unknown",
+    "images": null,
+    "detached": true
+  },
+  "state": "done",
+  "project": {
+    "root": "/srv/sunday",
+    "checks_directory": "/srv/sunday/.agents/reality-check"
+  },
+  "directory": "/srv/sunday/.agents/reality-check/20261112-220641-3f9a2c",
+  "evidence": [
+    {
+      "path": "evidence/01-sign-up.png",
+      "media_type": "image/png",
+      "size": 64015,
+      "modified_at": "2026-11-12T22:06:58.096288Z"
+    },
+    {
+      "path": "evidence/02-sign-up.har",
+      "media_type": "application/octet-stream",
+      "size": 1858,
+      "modified_at": "2026-11-12T22:07:02.532645Z"
+    },
+    {
+      "path": "evidence/02-signed-up.png",
+      "media_type": "image/png",
+      "size": 47612,
+      "modified_at": "2026-11-12T22:07:02.749758Z"
+    },
+    {
+      "path": "evidence/03-click-send.console.txt",
+      "media_type": "text/plain",
+      "size": 333,
+      "modified_at": "2026-11-12T22:07:14.129725Z"
+    },
+    {
+      "path": "evidence/03-click-send.har",
+      "media_type": "application/octet-stream",
+      "size": 1771,
+      "modified_at": "2026-11-12T22:07:13.644257Z"
+    },
+    {
+      "path": "evidence/03-send-failed.png",
+      "media_type": "image/png",
+      "size": 48989,
+      "modified_at": "2026-11-12T22:07:13.956270Z"
+    },
+    {
+      "path": "evidence/04-after-reload.png",
+      "media_type": "image/png",
+      "size": 47422,
+      "modified_at": "2026-11-12T22:07:32.718979Z"
+    },
+    {
+      "path": "evidence/05-mail-unreachable.terminal.txt",
+      "media_type": "text/plain",
+      "size": 351,
+      "modified_at": "2026-11-12T22:07:50.937988Z"
+    },
+    {
+      "path": "evidence/05-reset-requested.png",
+      "media_type": "image/png",
+      "size": 60473,
+      "modified_at": "2026-11-12T22:07:40.663223Z"
+    }
+  ],
+  "resumes": null,
+  "previous_checks": []
+}

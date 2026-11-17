@@ -89,7 +89,7 @@ Check and build it, and copy the build into the package (without pnpm, this says
 uv run build-app.py
 ```
 
-`uv run build-app.py lint` (or `format`, `typecheck`, `build`, `build:view`) runs one step. The precommit hooks run these when `app/` changes, so commit the rebuilt files with the source.
+`uv run build-app.py lint` (or `format`, `typecheck`, `build`, `build:view`, `build:demo`) runs one step. `build:demo` builds the website's example of the app, from `app/demo/` into `site/demo/`. The precommit hooks run these when `app/` changes, so commit the rebuilt files with the source.
 
 To see a change, build it and serve the app:
 
@@ -143,7 +143,7 @@ An update never applies a major version upgrade. Collect each one, check whether
 1. Run `pnpm --dir app update <package>` for each excluded major, so it still moves to the newest release within its current range.
 1. If `app/pnpm-workspace.yaml` has `overrides`, make sure each still matches the updated versions, then run `pnpm --dir app install`.
 1. Set `packageManager` in `app/package.json` to the newest pnpm release in its major that is at least 7 days old, from `pnpm view pnpm time --json`.
-1. Run `uv run build-app.py`. It installs, lints, formats, type checks, and compiles both the host page and the view into `src/reality_check/capabilities/app/static/`. Those compiled files are committed, so they are part of the change.
+1. Run `uv run build-app.py`. It installs, lints, formats, type checks, and compiles both the host page and the view into `src/reality_check/capabilities/app/static/`, and the website's example into `site/demo/`. Those compiled files are committed, so they are part of the change.
 
 ##### GitHub Actions
 
