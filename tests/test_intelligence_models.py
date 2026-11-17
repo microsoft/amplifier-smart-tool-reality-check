@@ -9,7 +9,14 @@ from typer.testing import CliRunner
 from reality_check import lib
 from reality_check.capabilities.check_software.intelligence_models import require_allowed
 from reality_check.cli import app
-from reality_check.schemas import ALL_EFFORTS, INTELLIGENCE_MODELS, AgentProvider, RealityCheckError
+from reality_check.schemas import (
+    ALL_EFFORTS,
+    DEFAULT_INTELLIGENCE_MODELS,
+    DEFAULT_INTELLIGENCE_REASONING_EFFORT,
+    INTELLIGENCE_MODELS,
+    AgentProvider,
+    RealityCheckError,
+)
 
 runner = CliRunner()
 
@@ -66,7 +73,13 @@ def test_the_cli_prints_the_list_as_json() -> None:
         ("amplifier-agent", "openai/gpt-6.1-sol", "medium"),
         ("amplifier-agent", "gpt-6.1-sol", "model-not-allowed"),
         ("codex", "gpt-6.1-sol", "medium"),
+        ("copilot", "gpt-6.2-sol", "medium"),
+        ("copilot", "gpt-6.2-astra", "medium"),
+        ("codex", "gpt-6.2-sol", "medium"),
+        ("codex", "gpt-6.2-astra", "medium"),
         ("claude", "claude-sonnet-5-5", "medium"),
+        ("claude", "claude-fable-5-2", "medium"),
+        ("claude", "gpt-6.2-sol", "model-not-allowed"),
         ("claude", "claude-sonnet-5.5", "model-not-allowed"),
     ],
 )
@@ -79,3 +92,26 @@ def test_every_agent_provider_runs_only_its_listed_models(
     with pytest.raises(RealityCheckError) as failure:
         require_allowed(agent_provider, model, None, [])
     assert failure.value.code == expected
+
+
+def test_each_agent_provider_lists_its_newest_models_first_and_defaults_to_medium() -> None:
+    def ids(agent_provider: AgentProvider) -> list[str]:
+        return [entry.id for entry in INTELLIGENCE_MODELS if entry.agent_provider == agent_provider]
+
+    assert ids("copilot")[:3] == ["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-sol"]
+    assert ids("codex")[:3] == ["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-sol"]
+    assert ids("claude") == ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-2"]
+    assert DEFAULT_INTELLIGENCE_MODELS == {
+        "copilot": "gpt-6.1-sol",
+        "amplifier-agent": "openai/gpt-6.1-sol",
+        "codex": "gpt-6.1-sol",
+        "claude": "claude-opus-5-5",
+    }
+    assert DEFAULT_INTELLIGENCE_REASONING_EFFORT == "medium"
+
+
+def test_check_software_help_names_the_default_reasoning_effort() -> None:
+    result = runner.invoke(app, ["check-software", "-h"], env={"COLUMNS": "200"})
+
+    assert result.exit_code == 0
+    assert f"{DEFAULT_INTELLIGENCE_REASONING_EFFORT} when omitted" in result.stdout

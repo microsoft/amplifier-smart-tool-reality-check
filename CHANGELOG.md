@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.9.2 (2026-11-17)
+
+- `gpt-6.2-sol` and `gpt-6.2-astra` are now supported on the `copilot` and `codex` agent providers, and `claude-fable-5-2` on `claude`.
+- Updated dependencies, agent SDKs, and docs.
+
 ## 0.9.1 (2026-11-12)
 
 - The checking agent's prompt states the machine's CPUs, free memory, and room for more processes and threads. Also added instructions to be more aware of resource usage, particularly when running in parallel.

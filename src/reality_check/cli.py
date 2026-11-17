@@ -27,6 +27,7 @@ from reality_check.core.skill import DISTRIBUTION
 from reality_check.schemas import (
     COMPONENTS,
     DEFAULT_CHECKS_DIRECTORY,
+    DEFAULT_INTELLIGENCE_REASONING_EFFORT,
     DEFAULT_ORIGIN,
     AgentProvider,
     AskFirst,
@@ -161,7 +162,11 @@ def check_software(
     ] = None,
     model: Annotated[str | None, typer.Option("--model", help="The agent provider's default when omitted.")] = None,
     reasoning_effort: Annotated[
-        ReasoningEffort | None, typer.Option("--reasoning-effort", help="high, or none for a model that takes none.")
+        ReasoningEffort | None,
+        typer.Option(
+            "--reasoning-effort",
+            help=f"{DEFAULT_INTELLIGENCE_REASONING_EFFORT} when omitted, or none for a model that takes none.",
+        ),
     ] = None,
     timeout_seconds: Annotated[
         int | None, typer.Option("--timeout-seconds", min=1, help="How long the check may run; no limit when omitted.")

@@ -56,7 +56,7 @@ from reality_check.schemas import DEFAULT_INTELLIGENCE_MODELS, RealityCheckError
 
 # How long a cancelled turn may take to reach its terminal event before the run stops waiting for it.
 DRAIN_SECONDS = 30
-PROVIDERS_DOCUMENTATION = "https://github.com/microsoft/amplifier-agent/blob/v0.25.0/docs/providers.md"
+PROVIDERS_DOCUMENTATION = "https://github.com/microsoft/amplifier-agent/blob/v0.30.0/docs/providers.md"
 # Providers differ in which JSON Schema features they accept in a tool definition, so the submit tool declares any
 # object and the handler validates the output schema, keeping its failures retryable within the turn.
 PERMISSIVE_SCHEMA: dict[str, Any] = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
@@ -274,6 +274,8 @@ class AmplifierAgentRun:
             skills=[str(directory) for directory in request.skill_directories],
             approvals="allow",
             working_directory=working_directory,
+            # The checking agent gets the same skills and prompt on every agent provider.
+            smart_tools=False,
             sessions_directory=request.session_directory or state_directory("amplifier-agent") / "sessions",
         )
         # Over this process's environment for the agent's tools alone, so the caller's own is never changed.
@@ -444,6 +446,7 @@ async def _probe(provider: str, model: str) -> None:
                 provider=provider,
                 model=model,
                 tools=[],
+                smart_tools=False,
                 sessions_directory=state_directory("amplifier-agent") / "sessions",
             )
         )

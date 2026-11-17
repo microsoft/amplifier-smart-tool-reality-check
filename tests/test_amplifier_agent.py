@@ -3,6 +3,7 @@
 import asyncio
 import base64
 from collections.abc import AsyncIterator, Callable, Coroutine
+from datetime import UTC, datetime
 from decimal import Decimal
 import os
 from pathlib import Path
@@ -53,6 +54,13 @@ SCHEMA = {
     "required": ["score"],
     "additionalProperties": False,
 }
+
+
+def session_record(session_id: str) -> SessionRecord:
+    now = datetime.now(UTC)
+    return SessionRecord(
+        session_id, "durable", "openai", "gpt-6.1-sol", working_directory=".", created_at=now, updated_at=now
+    )
 
 
 def agent_error(code: str = "provider_failed") -> AgentError:
@@ -142,7 +150,7 @@ class FakeWorld:
         world = self
 
         class Session:
-            info = SessionRecord(session_id=SESSION, persistence="durable", provider="openai", model="gpt-6.1-sol")
+            info = session_record(SESSION)
 
             async def start_turn(self, turn_input: TurnInput) -> FakeTurn:
                 world.calls.append("start_turn")
@@ -168,7 +176,7 @@ class FakeWorld:
             async def resume_session(self, session_id: str) -> Session:
                 world.calls.append(f"resume_session {session_id}")
                 session = Session()
-                session.info = SessionRecord(session_id, "durable", "openai", "gpt-6.1-sol")
+                session.info = session_record(session_id)
                 return session
 
             async def close(self) -> None:
@@ -267,6 +275,7 @@ async def test_the_agent_gets_the_split_model_workspace_sessions_and_skills_and_
     assert options.sessions_directory == tmp_path / "session"
     assert options.skills == [str(tmp_path / "skills"), str(tmp_path / "more")]
     assert options.approvals == "allow"
+    assert options.smart_tools is False
     assert options.tools is None
     assert options.environment is None
     assert texts(fake.inputs[0]) == ["Do the work."]
@@ -337,7 +346,7 @@ async def test_a_model_without_a_provider_is_refused_before_an_agent(
 
     assert failure.value.code == "model-invalid"
     assert "<provider>/<model>" in failure.value.message
-    assert "v0.25.0/docs/providers.md" in failure.value.remedy
+    assert "v0.30.0/docs/providers.md" in failure.value.remedy
     assert fake.calls == []
 
 
@@ -703,6 +712,7 @@ def test_preflight_passes_with_credentials_or_where_they_cannot_be_detected(worl
         ("openai", "gpt-6.1-sol"),
         ("azure-openai", "my-deployment"),
     ]
+    assert all(each.tools == [] and each.smart_tools is False for each in fake.options)
     assert fake.calls.count("agent.close") == 2
 
 
