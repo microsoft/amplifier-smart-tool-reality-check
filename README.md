@@ -1,12 +1,12 @@
 <h1 align="center">Reality Check Smart Tool</h1>
 
-<p align="center">The most thorough tester you have worked with. It finds what your agent missed, and proves it.</p>
-
 <p align="center">
   <a href="https://microsoft.github.io/amplifier-smart-tool-reality-check/">Website</a> |
   <a href="https://microsoft.github.io/amplifier-smart-tools/blog/optimized-sub-agents/">Blog</a> |
   <a href="https://microsoft.github.io/amplifier-smart-tools/">Smart Tools</a>
 </p>
+
+<p align="center">The most thorough tester you have worked with. It finds what your agent missed, and proves it.</p>
 
 <img width="1280" height="720" alt="2026-10-30-reality-check-readme" src="https://github.com/user-attachments/assets/81ef7c5b-cd87-4496-ac88-40d0b02f3ec7" />
 
