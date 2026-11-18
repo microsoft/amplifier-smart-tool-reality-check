@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.3 (2026-11-18)
+
+- The `amplifier-agent` extra moves to amplifier-agent v0.30.2, in which the model receives each tool's result again on newer `amplifier-module-loop-streaming` revisions instead of `null`.
+
 ## 0.9.2 (2026-11-17)
 
 - `gpt-6.2-sol` and `gpt-6.2-astra` are now supported on the `copilot` and `codex` agent providers, and `claude-fable-5-2` on `claude`.
