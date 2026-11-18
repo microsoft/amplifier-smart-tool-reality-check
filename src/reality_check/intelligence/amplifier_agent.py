@@ -56,7 +56,7 @@ from reality_check.schemas import DEFAULT_INTELLIGENCE_MODELS, RealityCheckError
 
 # How long a cancelled turn may take to reach its terminal event before the run stops waiting for it.
 DRAIN_SECONDS = 30
-PROVIDERS_DOCUMENTATION = "https://github.com/microsoft/amplifier-agent/blob/v0.30.2/docs/providers.md"
+PROVIDERS_DOCUMENTATION = "https://github.com/microsoft/amplifier-agent/blob/main/docs/providers.md"
 # Providers differ in which JSON Schema features they accept in a tool definition, so the submit tool declares any
 # object and the handler validates the output schema, keeping its failures retryable within the turn.
 PERMISSIVE_SCHEMA: dict[str, Any] = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
