@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.4 (2026-11-18)
+
+- The `amplifier-agent` extra follows amplifier-agent's default branch instead of a release tag, so a new install gets its latest changes.
+
 ## 0.9.3 (2026-11-18)
 
 - The `amplifier-agent` extra moves to amplifier-agent v0.30.2, in which the model receives each tool's result again on newer `amplifier-module-loop-streaming` revisions instead of `null`.

@@ -11,7 +11,7 @@ Install:
 - [prek](https://github.com/j178/prek): Used for precommit hooks. Recommended to install through PyPI/uv with `uv tool install prek`. Use `uv tool upgrade prek` to update it.
 - [GitHub CLI](https://cli.github.com/) for intelligence features with GitHub Copilot.
 - [GitHub Copilot subscription](https://github.com/github/copilot-cli#prerequisites) for intelligent features through the `copilot` agent provider.
-- [Model provider credentials](https://github.com/microsoft/amplifier-agent/blob/v0.30.2/docs/providers.md), such as `OPENAI_API_KEY`, for intelligent features through the `amplifier-agent` agent provider.
+- [Model provider credentials](https://github.com/microsoft/amplifier-agent/blob/main/docs/providers.md), such as `OPENAI_API_KEY`, for intelligent features through the `amplifier-agent` agent provider.
 - [Codex CLI](https://github.com/openai/codex) [signed in](https://developers.openai.com/codex/auth) with ChatGPT or an API key, for intelligent features through the `codex` agent provider.
 - [`ANTHROPIC_API_KEY` or a cloud provider's credentials](https://code.claude.com/docs/en/agent-sdk/quickstart), for intelligent features through the `claude` agent provider.
 - [Docker](https://docs.docker.com/get-started/get-docker/), for [evaluations](../evaluations/README.md).
@@ -119,9 +119,9 @@ An update never applies a major version upgrade. Collect each one, check whether
 1. Runtime dependencies and extras carry a cap at the next major, for example `"mcp>=2.3.0,<3.0.0"`, so we never auto upgrade to a new major. A 0.x package treats its minor as the major, so its cap is the next minor, for example `"fastapi>=0.141.1,<0.142.0"`. The exception is `openai-codex`, capped at `<1.0.0`: each of its versions pins the Codex CLI release of the same number, so a new minor is a routine CLI release. Dev dependencies have no cap.
 1. For each PyPI dependency in `[project.dependencies]`, `[project.optional-dependencies]`, and `[dependency-groups]`, find the latest version. Read `https://pypi.org/pypi/<name>/json` and take the newest non-prerelease, non-yanked release whose earliest file upload is at least 7 days old. Do not trust the top of the PyPI history page; it ignores the cooldown.
 1. Raise each floor that is behind to that version, keeping the form the entry already uses (`>=2.13,<3.0` stays two-part, `>=0.27.2,<0.28.0` stays three-part). Never raise a cap: a latest version at or past the cap is a major upgrade to report.
-1. Move the git dependencies, which have no cooldown. They are pinned exactly and checked by the evaluation runs below, so they move even across a 0.x minor.
-   - `amplifier-agent` to its newest release tag, from `gh release list -R microsoft/amplifier-agent -L 1`. Its tag is also in the providers documentation links; replace every match of `git grep <old-tag>`.
-   - `digital-twin-universe` to its newest release tag, from `git ls-remote --tags --refs --sort=-v:refname https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe "v*" | head -1`.
+1. Move the git dependencies, which have no cooldown. They are checked by the evaluation runs below, so they move even across a 0.x minor.
+   - `amplifier-agent` follows its default branch, so `uv lock --upgrade` below moves it to the latest commit.
+   - `digital-twin-universe` is pinned exactly; move it to its newest release tag, from `git ls-remote --tags --refs --sort=-v:refname https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe "v*" | head -1`.
 1. Update `uv_build` under `[build-system]` to the latest version, moving its cap with it. It is the one exception to the cap rule.
 1. `exclude-newer-package` exempts a package from the cooldown for a security fix. Remove each entry whose comment condition now holds.
 1. Run `uv lock --upgrade`. It respects the cooldown and the caps, and moves transitive dependencies too. Do this even when `pyproject.toml` did not change.
