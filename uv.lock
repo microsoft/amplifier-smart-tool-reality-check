@@ -115,16 +115,16 @@ wheels = [
 
 [[package]]
 name = "amplifier-agent"
-version = "0.30.0"
-source = { git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fpython&rev=v0.30.0#64c96119fff5a735a3acd95fb09abb3abd6e9ecf" }
+version = "0.30.2"
+source = { git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fpython&rev=v0.30.2#4264f69209e28ac72f223461febd7f6be380beef" }
 dependencies = [
     { name = "amplifier-agent-engine" },
 ]
 
 [[package]]
 name = "amplifier-agent-engine"
-version = "0.30.0"
-source = { git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fengine&rev=v0.30.0#64c96119fff5a735a3acd95fb09abb3abd6e9ecf" }
+version = "0.30.2"
+source = { git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fengine&rev=v0.30.2#4264f69209e28ac72f223461febd7f6be380beef" }
 dependencies = [
     { name = "amplifier-core" },
     { name = "amplifier-foundation" },
@@ -232,7 +232,7 @@ dependencies = [
 [[package]]
 name = "amplifier-module-loop-streaming"
 version = "1.0.0"
-source = { git = "https://github.com/microsoft/amplifier-module-loop-streaming#fd4d8947a4ae06e183ca3a466d5d31b4ea958a70" }
+source = { git = "https://github.com/microsoft/amplifier-module-loop-streaming#f920750b8e60779888a40aa52356d48892350908" }
 
 [[package]]
 name = "amplifier-module-provider-anthropic"
@@ -2037,7 +2037,7 @@ wheels = [
 
 [[package]]
 name = "reality-check"
-version = "0.9.2"
+version = "0.9.3"
 source = { editable = "." }
 default-groups = "all"
 dependencies = [
@@ -2086,7 +2086,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "amplifier-agent", marker = "extra == 'amplifier-agent'", git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fpython&rev=v0.30.0" },
+    { name = "amplifier-agent", marker = "extra == 'amplifier-agent'", git = "https://github.com/microsoft/amplifier-agent?subdirectory=packages%2Fpython&rev=v0.30.2" },
     { name = "certifi", specifier = ">=2026.10.23,<2027.0.0" },
     { name = "claude-agent-sdk", marker = "extra == 'claude'", specifier = ">=0.2.174,<0.3.0" },
     { name = "digital-twin-universe", git = "https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe?rev=v0.6.9" },
