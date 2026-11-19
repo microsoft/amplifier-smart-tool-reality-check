@@ -116,12 +116,10 @@ An update never applies a major version upgrade. Collect each one, check whether
 
 ##### Python
 
-1. Runtime dependencies and extras carry a cap at the next major, for example `"mcp>=2.3.0,<3.0.0"`, so we never auto upgrade to a new major. A 0.x package treats its minor as the major, so its cap is the next minor, for example `"fastapi>=0.141.1,<0.142.0"`. The exception is `openai-codex`, capped at `<1.0.0`: each of its versions pins the Codex CLI release of the same number, so a new minor is a routine CLI release. Dev dependencies have no cap.
+1. reality-check is also a library, so runtime dependencies and extras take wide ranges that other projects can share. Each is capped at the next major, for example `"mcp>=2.3.0,<3.0.0"`, and a 0.x package at `<1.0.0`, for example `"fastapi>=0.141.1,<1.0.0"`. A lower cap is only for a release known to break reality-check, with the reason here. `certifi` has calendar versions and no cap. Dev dependencies have no cap.
 1. For each PyPI dependency in `[project.dependencies]`, `[project.optional-dependencies]`, and `[dependency-groups]`, find the latest version. Read `https://pypi.org/pypi/<name>/json` and take the newest non-prerelease, non-yanked release whose earliest file upload is at least 7 days old. Do not trust the top of the PyPI history page; it ignores the cooldown.
-1. Raise each floor that is behind to that version, keeping the form the entry already uses (`>=2.13,<3.0` stays two-part, `>=0.27.2,<0.28.0` stays three-part). Never raise a cap: a latest version at or past the cap is a major upgrade to report.
-1. Move the git dependencies, which have no cooldown. They are checked by the evaluation runs below, so they move even across a 0.x minor.
-   - `amplifier-agent` follows its default branch, so `uv lock --upgrade` below moves it to the latest commit.
-   - `digital-twin-universe` is pinned exactly; move it to its newest release tag, from `git ls-remote --tags --refs --sort=-v:refname https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe "v*" | head -1`.
+1. Raise each floor that is behind to that version, keeping the form the entry already uses (`>=2.13,<3.0` stays two-part, `>=0.141.1,<1.0.0` stays three-part). Never raise a cap: a latest version at or past the cap is a major upgrade to report.
+1. The git dependencies, `amplifier-agent` and `digital-twin-universe`, follow their default branches and have no cooldown, so `uv lock --upgrade` below moves them to their latest commits. They are checked by the evaluation runs below.
 1. Update `uv_build` under `[build-system]` to the latest version, moving its cap with it. It is the one exception to the cap rule.
 1. `exclude-newer-package` exempts a package from the cooldown for a security fix. Remove each entry whose comment condition now holds.
 1. Run `uv lock --upgrade`. It respects the cooldown and the caps, and moves transitive dependencies too. Do this even when `pyproject.toml` did not change.
@@ -162,7 +160,7 @@ An update never applies a major version upgrade. Collect each one, check whether
 ##### Finish
 
 1. Run `prek run --all-files` and `uv run pytest`; both must pass.
-1. Only when an agent SDK moves to a new major version, by the same rule as the caps (a 0.x minor counts, an `openai-codex` minor does not), run one [evaluation](../evaluations/README.md) task on each provider whose SDK did, all at the same time. They are too slow for minor and patch bumps. `copilot` covers `github-copilot-sdk`, `codex` covers `openai-codex`, `claude` covers `claude-agent-sdk`, and `amplifier-agent` covers `amplifier-agent`. Each run must complete, with a score in line with that provider's earlier runs of the task. The runs install reality-check as a user does, so they test the newest versions the `pyproject.toml` ranges allow, not `uv.lock`.
+1. Only when an agent SDK moves to a new major version (a 0.x minor counts, except for `openai-codex`, whose versions each pin the Codex CLI release of the same number), run one [evaluation](../evaluations/README.md) task on each provider whose SDK did, all at the same time. They are too slow for minor and patch bumps. `copilot` covers `github-copilot-sdk`, `codex` covers `openai-codex`, `claude` covers `claude-agent-sdk`, and `amplifier-agent` covers `amplifier-agent`. Each run must complete, with a score in line with that provider's earlier runs of the task. The runs install reality-check as a user does, so they test the newest versions the `pyproject.toml` ranges allow, not `uv.lock`.
 
    ```bash
    for provider in <provider-1> <provider-2>; do

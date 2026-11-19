@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.5 (2026-11-19)
+
+- Updated dependencies, agent SDKs, and docs.
+
 ## 0.9.4 (2026-11-18)
 
 - The `amplifier-agent` extra follows amplifier-agent's default branch instead of a release tag, so a new install gets its latest changes.

@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Callable, Coroutine, Generator
 import contextlib
+from enum import StrEnum
 import io
 import json
 from pathlib import Path
@@ -17,7 +18,7 @@ import typer
 
 # Typer 0.27 vendors Click, so a command that overrides Click's own hooks has to speak the vendored types.
 from typer._click import Context, Parameter
-from typer._types import TyperChoice
+from typer._coercion import bool_flag_type_descriptor
 from typer.core import TyperCommand, TyperOption
 from typer.models import CommandFunctionType
 
@@ -64,6 +65,7 @@ class CapabilityCommand(TyperCommand):
             *super().get_params(ctx),
             TyperOption(
                 param_decls=["-h"],
+                type_descriptor=bool_flag_type_descriptor(),
                 is_flag=True,
                 is_eager=True,
                 expose_value=False,
@@ -72,6 +74,7 @@ class CapabilityCommand(TyperCommand):
             ),
             TyperOption(
                 param_decls=["--help"],
+                type_descriptor=bool_flag_type_descriptor(),
                 is_flag=True,
                 is_eager=True,
                 expose_value=False,
@@ -321,12 +324,15 @@ def list_intelligence_models() -> None:
     typer.echo(lib.list_intelligence_models().model_dump_json(indent=2))
 
 
+# Typer takes no list of a Literal, so `--component` takes an enum of the Literal's values.
+ComponentChoice = StrEnum("ComponentChoice", {component: component for component in COMPONENTS})
+
+
 @app.command()
 def install(
     components: Annotated[
-        list[str] | None,
-        # Typer takes no list of a Literal, so the choices are given as the Literal's values.
-        typer.Option("--component", click_type=TyperChoice(COMPONENTS), help="Only this one; repeatable."),
+        list[ComponentChoice] | None,
+        typer.Option("--component", help="Only this one; repeatable."),
     ] = None,
 ) -> None:
     """Install, once, what checks use beyond the agent, and print what it installed as JSON. Deterministic.
