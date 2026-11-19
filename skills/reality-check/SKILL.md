@@ -17,13 +17,13 @@ Checks that an app works the way a real user would experience it, on your machin
 
 ```bash
 # as a CLI, choosing the agent provider(s) you want
-uv tool install "reality-check[all | copilot | amplifier-agent | codex | claude] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.4"
+uv tool install "reality-check[all | copilot | amplifier-agent | codex | claude] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.5"
 
 # as a library, from another project
-uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.4"
+uv add "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.5"
 
 # once, without installing
-uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.4" reality-check --help
+uvx --from "reality-check[all] @ git+https://github.com/microsoft/amplifier-smart-tool-reality-check@v0.9.5" reality-check --help
 
 # once, to give checks everything they can use
 reality-check install

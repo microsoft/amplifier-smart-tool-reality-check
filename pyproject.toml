@@ -1,13 +1,13 @@
 [project]
 name = "reality-check"
-version = "0.9.4"
+version = "0.9.5"
 description = "Checks that an app works the way a real user would experience it, on your machine, in a Digital Twin Universe, or in one it sets up for you, and returns evidence for every finding. Use after an agent builds a feature or fix, when passing tests are not enough evidence that a user can do what they came to do"
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
 dependencies = [
-    "certifi>=2026.10.23,<2027.0.0",
-    "digital-twin-universe @ git+https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe@v0.6.9",
-    "fastapi>=0.141.1,<0.142.0",
+    "certifi>=2026.10.23",
+    "digital-twin-universe @ git+https://github.com/microsoft/amplifier-smart-tool-digital-twin-universe",
+    "fastapi>=0.141.1,<1.0.0",
     "filelock>=4.2.4,<5.0.0",
     "jsonschema>=4.26.0,<5.0.0",
     "mcp>=2.3.0,<3.0.0",
@@ -15,8 +15,8 @@ dependencies = [
     "psutil>=7.2.2,<8.0.0",
     "pydantic>=2.14,<3.0",
     "pyyaml>=6.0.3,<7.0.0",
-    "typer>=0.27.3,<0.28.0",
-    "uvicorn>=0.53.0,<0.54.0",
+    "typer>=0.29.1,<1.0.0",
+    "uvicorn>=0.53.0,<1.0.0",
 ]
 
 [project.urls]
@@ -36,7 +36,7 @@ codex = [
     "openai-codex>=0.163.0,<1.0.0",
 ]
 claude = [
-    "claude-agent-sdk>=0.2.174,<0.3.0",
+    "claude-agent-sdk>=0.2.174,<1.0.0",
 ]
 all = [
     "reality-check[copilot,amplifier-agent,codex,claude]",
